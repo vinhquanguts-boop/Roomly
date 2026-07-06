@@ -1,0 +1,34 @@
+{
+  "name": "@roomly/server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "db:health": "tsx src/scripts/db-health.ts",
+    "ai:test": "tsx src/scripts/test-ai.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.6",
+    "@hono/zod-validator": "^0.7.6",
+    "@upstash/ratelimit": "^2.0.6",
+    "@upstash/redis": "^1.35.6",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.10.7",
+    "nanoid": "^5.1.6",
+    "postgres": "^3.4.7",
+    "replicate": "^1.2.1",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "drizzle-kit": "^0.31.8",
+    "tsx": "^4.21.0",
+    "typescript": "~5.9.3"
+  }
+}
