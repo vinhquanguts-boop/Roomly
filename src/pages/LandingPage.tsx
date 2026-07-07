@@ -295,7 +295,7 @@ export function LandingPage() {
             <p className="mt-3 text-text-secondary">We never train on your photos.</p>
           </div>
         </div>
-        <p className="mx-auto mt-8 max-w-[1120px] text-center text-xs text-text-secondary">&copy; 2025 Roomly. All rights reserved.</p>
+        <p className="mx-auto mt-8 max-w-[1120px] text-center text-xs text-text-secondary">&copy; {new Date().getFullYear()} Roomly. All rights reserved.</p>
       </footer>
     </div>
   );

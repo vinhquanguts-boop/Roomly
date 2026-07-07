@@ -6,6 +6,9 @@
 .dev.vars.*
 *.local
 
+# Private local-only docs
+docs/research/
+
 # Dependencies
 node_modules/
 
