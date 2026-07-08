@@ -56,25 +56,39 @@ async function ollamaChat(model: string, messages: ChatCompletionMessage[]): Pro
   return content;
 }
 
-async function fetchImageAsBase64(imageUrl: string): Promise<string> {
+function inferImageMimeType(imageUrl: string, responseContentType: string | null): string {
+  const contentType = responseContentType?.split(';')[0]?.trim();
+  if (contentType?.startsWith('image/')) {
+    return contentType;
+  }
+
+  if (imageUrl.endsWith('.png')) return 'image/png';
+  if (imageUrl.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
+}
+
+async function fetchImageAsBase64(imageUrl: string): Promise<{ base64: string; mimeType: string }> {
   const response = await fetch(imageUrl);
   if (!response.ok) {
     throw new Error(`Could not fetch room image: ${response.status}`);
   }
   const buffer = Buffer.from(await response.arrayBuffer());
-  return buffer.toString('base64');
+  return {
+    base64: buffer.toString('base64'),
+    mimeType: inferImageMimeType(imageUrl, response.headers.get('content-type')),
+  };
 }
 
 export class LocalProvider implements AIProvider {
   async analyzeRoom(imageUrl: string): Promise<RoomAnalysis> {
-    const base64 = await fetchImageAsBase64(imageUrl);
+    const { base64, mimeType } = await fetchImageAsBase64(imageUrl);
     const content = await ollamaChat(VLM_MODEL, [
       { role: 'system', content: ROOM_ANALYSIS_SYSTEM },
       {
         role: 'user',
         content: [
           { type: 'text', text: ROOM_ANALYSIS_USER },
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
         ],
       },
     ]);

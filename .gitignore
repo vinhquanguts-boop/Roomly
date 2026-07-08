@@ -19,6 +19,7 @@ dist-ssr/
 build/
 coverage/
 qa/
+server/storage/
 
 # Logs
 logs/

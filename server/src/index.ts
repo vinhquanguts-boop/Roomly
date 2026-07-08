@@ -2,7 +2,9 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { loadEnv } from './lib/env.js';
+import { readLocalFile } from './lib/storage.js';
 import { healthRouter } from './routes/health.js';
+import { roomsRouter } from './routes/rooms.js';
 
 loadEnv();
 
@@ -28,6 +30,20 @@ app.use(
 );
 
 app.route('/api', healthRouter);
+app.route('/api/rooms', roomsRouter);
+
+app.get('/storage/:key{.*}', async (c) => {
+  try {
+    const key = c.req.param('key');
+    const file = await readLocalFile(key);
+    return c.body(file.body, 200, {
+      'Content-Type': file.contentType,
+      'Cache-Control': 'public, max-age=3600',
+    });
+  } catch {
+    return c.json({ error: 'File not found.' }, 404);
+  }
+});
 
 const port = Number(process.env.PORT ?? 8787);
 
