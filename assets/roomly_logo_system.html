@@ -1,0 +1,150 @@
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@700&display=swap" rel="stylesheet">
+<h2 class="sr-only">Roomly logo system preview — arch mark icon in terracotta with Fraunces wordmark</h2>
+
+<style>
+:root{--tc:#C7684A;--tc-hover:#B2593D;--tc-muted:#E8D5CD;--dark:#1A1614;--cream:#F7F3ED;--sage:#7B8B6F}
+.logo-sec{padding:2rem 0 1.5rem;border-top:0.5px solid var(--border);margin-top:0}
+.logo-sec:first-child{border-top:none;padding-top:0}
+.sec-label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin:0 0 1.25rem;font-weight:500}
+.row{display:flex;align-items:center;flex-wrap:wrap;gap:2rem}
+.swatch{display:flex;align-items:center;justify-content:center;padding:1.5rem 2rem;border-radius:12px;border:0.5px solid var(--border)}
+.swatch.light-bg{background:var(--cream)}
+.swatch.dark-bg{background:var(--dark)}
+.swatch.muted-bg{background:var(--tc-muted)}
+.label{font-size:12px;color:var(--text-muted);margin-top:.6rem;text-align:center}
+.col{display:flex;flex-direction:column;align-items:center}
+
+/* nav preview */
+.nav-bar{display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:58px;border-radius:12px;border:0.5px solid var(--border);margin-top:.5rem}
+.nav-light{background:rgba(247,243,237,0.92)}
+.nav-dark{background:rgba(26,22,20,0.95);margin-top:.75rem}
+.nav-links{display:flex;gap:1.5rem}
+.nav-link-l{font-size:14px;font-weight:600;color:var(--dark);font-family:Inter,system-ui,sans-serif}
+.nav-link-d{font-size:14px;font-weight:600;color:#9a9089;font-family:Inter,system-ui,sans-serif}
+.nav-btn{font-size:13px;font-weight:600;padding:0 14px;height:34px;border-radius:6px;display:flex;align-items:center;gap:5px;font-family:Inter,system-ui,sans-serif}
+.nav-btn-l{background:var(--tc);color:#fff;border:none}
+.nav-btn-d{background:var(--tc);color:#fff;border:none}
+
+/* arch mark as inline SVG with scaling */
+.arch{display:inline-block;flex-shrink:0}
+.wordmark{font-family:'Fraunces',Georgia,serif;font-weight:700;color:var(--tc);line-height:1;letter-spacing:-.02em}
+.wordmark-dark{color:var(--dark)}
+.wordmark-white{color:#fff}
+.logo-row{display:flex;align-items:center}
+</style>
+
+<div>
+  <!-- SECTION: Full lockup -->
+  <div class="logo-sec">
+    <p class="sec-label">Full lockup — icon + wordmark</p>
+    <div class="row">
+      <div class="col">
+        <div class="swatch light-bg">
+          <div class="logo-row" style="gap:10px;align-items:center">
+            <svg width="28" height="31" viewBox="0 0 20 22" fill="none" aria-hidden="true"><path d="M0,22 L0,10 A10,10 0 0,0 20,10 L20,22 Z" fill="#C7684A"/></svg>
+            <span class="wordmark" style="font-size:28px">Roomly</span>
+          </div>
+        </div>
+        <p class="label">On cream — accent</p>
+      </div>
+      <div class="col">
+        <div class="swatch dark-bg">
+          <div class="logo-row" style="gap:10px;align-items:center">
+            <svg width="28" height="31" viewBox="0 0 20 22" fill="none" aria-hidden="true"><path d="M0,22 L0,10 A10,10 0 0,0 20,10 L20,22 Z" fill="#C7684A"/></svg>
+            <span class="wordmark" style="font-size:28px">Roomly</span>
+          </div>
+        </div>
+        <p class="label">On dark — accent</p>
+      </div>
+      <div class="col">
+        <div class="swatch dark-bg">
+          <div class="logo-row" style="gap:10px;align-items:center">
+            <svg width="28" height="31" viewBox="0 0 20 22" fill="none" aria-hidden="true"><path d="M0,22 L0,10 A10,10 0 0,0 20,10 L20,22 Z" fill="#fff"/></svg>
+            <span class="wordmark wordmark-white" style="font-size:28px">Roomly</span>
+          </div>
+        </div>
+        <p class="label">On dark — white</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION: Icon variants -->
+  <div class="logo-sec">
+    <p class="sec-label">Icon mark — sizes</p>
+    <div class="row">
+      <div class="col">
+        <div class="swatch light-bg">
+          <div style="display:flex;align-items:flex-end;gap:20px">
+            <div class="col" style="gap:6px">
+              <svg width="20" height="22" viewBox="0 0 20 22" fill="none"><path d="M0,22 L0,10 A10,10 0 0,0 20,10 L20,22 Z" fill="#C7684A"/></svg>
+              <span style="font-size:11px;color:var(--text-muted)">sm 20</span>
+            </div>
+            <div class="col" style="gap:6px">
+              <svg width="28" height="31" viewBox="0 0 20 22" fill="none"><path d="M0,22 L0,10 A10,10 0 0,0 20,10 L20,22 Z" fill="#C7684A"/></svg>
+              <span style="font-size:11px;color:var(--text-muted)">md 28</span>
+            </div>
+            <div class="col" style="gap:6px">
+              <svg width="40" height="44" viewBox="0 0 20 22" fill="none"><path d="M0,22 L0,10 A10,10 0 0,0 20,10 L20,22 Z" fill="#C7684A"/></svg>
+              <span style="font-size:11px;color:var(--text-muted)">lg 40</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="swatch" style="background:var(--tc-muted)">
+          <svg width="44" height="44" viewBox="0 0 44 44" fill="none">
+            <rect width="44" height="44" rx="10" fill="#E8D5CD"/>
+            <path d="M8,40 L8,26 A14,14 0 0,0 36,26 L36,40 Z" fill="#C7684A"/>
+          </svg>
+        </div>
+        <p class="label">App icon (44×44)</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION: Wordmark only -->
+  <div class="logo-sec">
+    <p class="sec-label">Wordmark — text only</p>
+    <div class="row">
+      <div class="col">
+        <div class="swatch light-bg">
+          <span class="wordmark" style="font-size:32px">Roomly</span>
+        </div>
+      </div>
+      <div class="col">
+        <div class="swatch dark-bg">
+          <span class="wordmark" style="font-size:32px">Roomly</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION: Navigation preview -->
+  <div class="logo-sec">
+    <p class="sec-label">Navigation — in context</p>
+
+    <div class="nav-bar nav-light">
+      <div class="logo-row" style="gap:10px;align-items:center">
+        <svg width="24" height="26" viewBox="0 0 20 22" fill="none" aria-hidden="true"><path d="M0,22 L0,10 A10,10 0 0,0 20,10 L20,22 Z" fill="#C7684A"/></svg>
+        <span class="wordmark" style="font-size:26px">Roomly</span>
+      </div>
+      <div class="nav-links">
+        <span class="nav-link-l">Explore</span>
+        <span class="nav-link-l">How it works</span>
+      </div>
+      <button class="nav-btn nav-btn-l">Get started <span style="font-size:13px">→</span></button>
+    </div>
+
+    <div class="nav-bar nav-dark">
+      <div class="logo-row" style="gap:10px;align-items:center">
+        <svg width="24" height="26" viewBox="0 0 20 22" fill="none" aria-hidden="true"><path d="M0,22 L0,10 A10,10 0 0,0 20,10 L20,22 Z" fill="#C7684A"/></svg>
+        <span class="wordmark" style="font-size:26px">Roomly</span>
+      </div>
+      <div class="nav-links">
+        <span class="nav-link-d">Explore</span>
+        <span class="nav-link-d">How it works</span>
+      </div>
+      <button class="nav-btn nav-btn-d">Get started <span style="font-size:13px">→</span></button>
+    </div>
+  </div>
+</div>

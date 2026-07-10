@@ -18,7 +18,7 @@ import { ROOM_ANALYSIS_SYSTEM, ROOM_ANALYSIS_USER } from '../prompts/roomAnalysi
 import { DESIGN_PLAN_SYSTEM, designPlanUserMessage } from '../prompts/designPlan.js';
 import { CHAT_SYSTEM } from '../prompts/chat.js';
 import { parseJsonResponse } from '../parseJson.js';
-import Replicate from 'replicate';
+import { renderWithReplicate } from '../render/replicate.js';
 
 const FIREWORKS_API_URL = 'https://api.fireworks.ai/inference/v1/chat/completions';
 const VLM_MODEL =
@@ -104,26 +104,7 @@ export class CloudProvider implements AIProvider {
   }
 
   async renderImage(input: RenderInput): Promise<{ url: string }> {
-    const token = process.env.REPLICATE_API_TOKEN;
-    const model = process.env.REPLICATE_SDXL_MODEL;
-    if (!token || !model) {
-      throw new Error(
-        'Cloud image rendering requires REPLICATE_API_TOKEN and REPLICATE_SDXL_MODEL; wiring lands in Phase 3.'
-      );
-    }
-
-    const replicate = new Replicate({ auth: token });
-    const output = (await replicate.run(model as `${string}/${string}`, {
-      input: {
-        prompt: input.prompt,
-        negative_prompt: input.negativePrompt ?? 'blurry, low quality',
-        image: input.originalImageUrl,
-        controlnet_conditioning_scale: 0.6,
-      },
-    })) as string[] | string;
-
-    const url = Array.isArray(output) ? output[0] : output;
-    return { url };
+    return renderWithReplicate(input);
   }
 
   async segmentRegion(input: SegmentInput): Promise<{ maskUrl: string }> {

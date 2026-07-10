@@ -1,0 +1,8 @@
+<svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Roomly">
+  <!-- Rounded square background in accent-muted cream -->
+  <rect width="44" height="44" rx="10" fill="#E8D5CD"/>
+  <!-- Arch mark: solid vault/doorway silhouette in terracotta -->
+  <!-- Arch: 28px wide (x=8 to x=36), radius=14, center=(22,26) -->
+  <!-- Dome top at y=12, pillars y=26→40, bottom margin 4px -->
+  <path d="M8,40 L8,26 A14,14 0 0,0 36,26 L36,40 Z" fill="#C7684A"/>
+</svg>

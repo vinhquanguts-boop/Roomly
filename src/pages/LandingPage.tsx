@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router';
 import {
   ArrowLeftRight,
@@ -13,6 +13,7 @@ import {
   Tag,
   WalletCards,
 } from 'lucide-react';
+import gsap from 'gsap';
 import heroPreview from '@/assets/landing-reference/hero-before-after.webp';
 import bedroomExample from '@/assets/landing-reference/example-bedroom.webp';
 import livingExample from '@/assets/landing-reference/example-living.webp';
@@ -26,9 +27,11 @@ import ikeaLogo from '@/assets/retailer-logos/ikea.webp';
 import kmartLogo from '@/assets/retailer-logos/kmart.webp';
 import taobaoLogo from '@/assets/retailer-logos/taobao.webp';
 import { LightCard } from '@/components/LightCard';
+import { Logo } from '@/components/Logo';
 import { Navigation } from '@/components/Navigation';
 import { Button } from '@/components/ui/button';
 import { HowItWorks } from '@/features/landing/HowItWorks';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import { cn } from '@/lib/utils';
 
@@ -82,14 +85,19 @@ const retailers = [
   { name: 'Taobao', logo: taobaoLogo, variant: 'square' },
 ];
 
-function ExampleCard({ title, price, image }: (typeof examples)[number]) {
+function ExampleCard({
+  title,
+  price,
+  image,
+  featured,
+}: (typeof examples)[number] & { featured?: boolean }) {
   return (
-    <LightCard className="overflow-hidden p-0" data-reveal>
+    <LightCard className={cn('overflow-hidden p-0', featured && 'lg:col-span-2')} data-reveal>
       <div className="relative overflow-hidden rounded-t-lg bg-bg-inset">
         <img
           src={image}
           alt={`${title} before and after room design`}
-          className="aspect-[1.8/1] w-full object-cover"
+          className={cn('aspect-[1.8/1] w-full object-cover', featured && 'lg:aspect-[2.6/1]')}
         />
         <span className="absolute left-1/2 top-1/2 flex size-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-bg-elevated text-text-primary shadow-card">
           <ArrowLeftRight className="size-3.5" aria-hidden="true" />
@@ -105,7 +113,20 @@ function ExampleCard({ title, price, image }: (typeof examples)[number]) {
 
 export function LandingPage() {
   const pageRef = useRef<HTMLDivElement>(null);
+  const heroTextRef = useRef<HTMLDivElement>(null);
+  const heroImageRef = useRef<HTMLDivElement>(null);
+  const reduced = useReducedMotion();
+
   useScrollReveal(pageRef);
+
+  useEffect(() => {
+    if (reduced) return;
+    const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+    tl
+      .fromTo(heroTextRef.current, { opacity: 0, y: 28 }, { opacity: 1, y: 0, duration: 0.75, clearProps: 'all' }, 0)
+      .fromTo(heroImageRef.current, { opacity: 0, scale: 0.97 }, { opacity: 1, scale: 1, duration: 0.95, clearProps: 'all' }, 0.12);
+    return () => { tl.kill(); };
+  }, [reduced]);
 
   return (
     <div ref={pageRef} className="min-h-dvh overflow-x-hidden bg-bg-base text-text-primary">
@@ -113,8 +134,8 @@ export function LandingPage() {
 
       <main>
         <section className="bg-[radial-gradient(circle_at_18%_12%,rgba(254,252,249,0.95),transparent_34%),linear-gradient(180deg,#fbf8f2_0%,#f7f3ed_100%)] px-6 pb-12 pt-10 md:px-10 md:pb-14 md:pt-16">
-          <div className="mx-auto grid max-w-[760px] items-center gap-12 lg:max-w-[1120px] md:grid-cols-[270px_1fr] lg:grid-cols-[0.72fr_1.28fr]">
-            <div data-reveal>
+          <div className="mx-auto grid max-w-[760px] items-center gap-12 lg:max-w-[1120px] md:grid-cols-[0.72fr_1.28fr] lg:grid-cols-[0.72fr_1.28fr]">
+            <div ref={heroTextRef}>
               <h1 className="max-w-[360px] font-display text-[40px] font-semibold leading-[0.98] text-text-primary md:text-[42px]">
                 Design a room you love.
                 <span className="mt-1 block italic text-accent">On your budget.</span>
@@ -146,7 +167,7 @@ export function LandingPage() {
               </div>
             </div>
 
-            <div className="relative overflow-hidden rounded-lg shadow-[0_14px_46px_rgba(26,22,20,0.14)]" data-reveal>
+            <div ref={heroImageRef} className="relative overflow-hidden rounded-lg shadow-[0_14px_46px_rgba(26,22,20,0.14)]">
               <img
                 src={heroPreview}
                 alt="Before and after of a small rental room refreshed with warm budget decor"
@@ -158,7 +179,7 @@ export function LandingPage() {
 
         <HowItWorks />
 
-        <section id="examples" className="bg-[#f8f4ee] px-6 py-8 md:px-10 md:py-8">
+        <section id="examples" className="bg-[#f8f4ee] px-6 py-16 md:px-10 md:py-20">
           <div className="mx-auto max-w-[1040px]">
             <div className="text-center" data-reveal>
               <h2 className="font-display text-[32px] font-semibold leading-tight md:text-[38px]">
@@ -168,8 +189,8 @@ export function LandingPage() {
             </div>
 
             <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {examples.map((example) => (
-                <ExampleCard key={example.title} {...example} />
+              {examples.map((example, i) => (
+                <ExampleCard key={example.title} {...example} featured={i === 0} />
               ))}
             </div>
 
@@ -181,7 +202,7 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="bg-bg-elevated px-6 py-10 md:px-10 md:py-10">
+        <section className="bg-bg-elevated px-6 py-16 md:px-10 md:py-20">
           <div className="mx-auto max-w-[980px]">
             <h2 className="text-center font-display text-[32px] font-semibold leading-tight md:text-[38px]" data-reveal>
               Why Roomly is different
@@ -220,7 +241,7 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section className="bg-bg-elevated px-6 pb-10 pt-2 md:px-10">
+        <section className="bg-bg-elevated px-6 pb-16 pt-0 md:px-10">
           <div className="mx-auto max-w-[980px] text-center">
             <p className="text-xs font-bold uppercase tracking-[0.24em] text-accent">Trusted stores you already use</p>
             <div className="mt-5 rounded-xl border border-border-subtle bg-[#fbf8f2] p-3 shadow-[0_12px_40px_rgba(26,22,20,0.06)] md:p-4">
@@ -252,10 +273,10 @@ export function LandingPage() {
       </main>
 
       <footer className="border-t border-border-subtle bg-[#f4eee5] px-6 py-8 md:px-10">
-        <div className="mx-auto grid max-w-[1120px] gap-8 text-sm text-text-primary md:grid-cols-[1.45fr_0.65fr_0.65fr_0.65fr_1.4fr]">
+        <div className="mx-auto grid max-w-[1120px] grid-cols-2 gap-8 text-sm text-text-primary md:grid-cols-[1.45fr_0.65fr_0.65fr_0.65fr] lg:grid-cols-[1.45fr_0.65fr_0.65fr_0.65fr_1.4fr]">
           <div>
-            <Link to="/" className="font-display text-[28px] font-bold text-accent">
-              Roomly
+            <Link to="/" className="transition-opacity hover:opacity-80" aria-label="Roomly home">
+              <Logo variant="full" size="sm" color="accent" />
             </Link>
             <p className="mt-4 max-w-[190px] leading-6">AI room design for real life. Beautiful rooms. Real prices.</p>
           </div>
@@ -287,7 +308,7 @@ export function LandingPage() {
             </div>
           </div>
 
-          <div className="rounded-lg bg-secondary-muted/70 p-5">
+          <div className="col-span-2 rounded-lg bg-secondary-muted/70 p-5 md:col-span-1 lg:col-auto">
             <div className="flex items-center gap-3 font-bold">
               <Lock className="size-5" aria-hidden="true" />
               Your privacy matters

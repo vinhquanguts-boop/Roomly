@@ -1,12 +1,14 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { ArrowLeft, CheckCircle2, Clock3, Loader2, Palette, Ruler, SunMedium } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Clock3, Palette, Ruler, SunMedium } from 'lucide-react';
 import { z } from 'zod';
 import { LightCard } from '@/components/LightCard';
+import { StepProgress } from '@/components/StepProgress';
 import { Button } from '@/components/ui/button';
+import { usePageEntrance } from '@/hooks/usePageEntrance';
 import { analyzeRoom, type RoomAnalysis } from '@/lib/api';
 
 const setupSchema = z.object({
@@ -124,6 +126,9 @@ export function SetupPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const roomId = searchParams.get('room');
+  const mainRef = useRef<HTMLElement>(null);
+
+  usePageEntrance(mainRef);
 
   const analysisQuery = useQuery({
     queryKey: ['room-analysis', roomId],
@@ -167,21 +172,26 @@ export function SetupPage() {
 
   if (!roomId) {
     return (
-      <main className="min-h-dvh bg-bg-base px-5 py-10 text-text-primary">
-        <LightCard className="mx-auto max-w-[620px] p-6">
-          <h1 className="font-display text-[34px] font-semibold">Room missing</h1>
-          <p className="mt-3 text-text-secondary">Start with a room photo so Roomly can analyze your space.</p>
-          <Button asChild className="mt-6">
-            <Link to="/design/upload">Upload a room</Link>
-          </Button>
-        </LightCard>
-      </main>
+      <>
+        <StepProgress current={2} />
+        <main className="min-h-dvh bg-bg-base px-5 py-10 text-text-primary">
+          <LightCard className="mx-auto max-w-[620px] p-6">
+            <h1 className="font-display text-[34px] font-semibold">Room missing</h1>
+            <p className="mt-3 text-text-secondary">Start with a room photo so Roomly can analyze your space.</p>
+            <Button asChild className="mt-6">
+              <Link to="/design/upload">Upload a room</Link>
+            </Button>
+          </LightCard>
+        </main>
+      </>
     );
   }
 
   return (
-    <main className="min-h-dvh bg-bg-base px-5 py-8 text-text-primary md:px-10">
-      <div className="mx-auto max-w-[1060px]">
+    <>
+      <StepProgress current={2} />
+      <main ref={mainRef} className="min-h-dvh bg-bg-base px-5 py-8 text-text-primary md:px-10">
+      <div className="mx-auto max-w-[1120px]">
         <Button variant="ghost" className="mb-6 gap-2 px-0 hover:bg-transparent" onClick={() => navigate('/design/upload')}>
           <ArrowLeft className="size-4" aria-hidden="true" />
           Back to upload
@@ -199,13 +209,36 @@ export function SetupPage() {
 
             <div className="mt-8">
               {analysisQuery.isPending ? (
-                <LightCard className="flex min-h-[300px] flex-col items-center justify-center p-8 text-center">
-                  <Loader2 className="size-8 animate-spin text-accent" aria-hidden="true" />
-                  <h2 className="mt-5 text-xl font-bold">Analyzing your room</h2>
-                  <p className="mt-2 max-w-[420px] text-sm leading-6 text-text-secondary">
-                    Ollama is checking room type, visible furniture, color palette, light, and layout.
-                  </p>
-                </LightCard>
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {[0, 1, 2, 3].map((i) => (
+                      <LightCard key={i} className="p-5">
+                        <div className="flex items-center gap-3">
+                          <div className="size-5 animate-pulse rounded-full bg-secondary-muted" />
+                          <div className="h-4 w-24 animate-pulse rounded bg-secondary-muted" />
+                        </div>
+                        <div className="mt-4 h-7 w-32 animate-pulse rounded bg-secondary-muted" />
+                        <div className="mt-2 space-y-1.5">
+                          <div className="h-3 w-full animate-pulse rounded bg-secondary-muted" />
+                          <div className="h-3 w-3/4 animate-pulse rounded bg-secondary-muted" />
+                        </div>
+                      </LightCard>
+                    ))}
+                  </div>
+                  <LightCard className="p-5">
+                    <div className="h-4 w-36 animate-pulse rounded bg-secondary-muted" />
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {[0, 1, 2, 3].map((i) => (
+                        <div key={i} className="h-7 w-20 animate-pulse rounded-full bg-secondary-muted" />
+                      ))}
+                    </div>
+                    <div className="mt-4 space-y-1.5">
+                      <div className="h-3 w-full animate-pulse rounded bg-secondary-muted" />
+                      <div className="h-3 w-5/6 animate-pulse rounded bg-secondary-muted" />
+                    </div>
+                  </LightCard>
+                  <p className="text-center text-sm font-semibold text-text-secondary">Analyzing your room…</p>
+                </div>
               ) : analysisQuery.isError ? (
                 <LightCard className="p-6">
                   <h2 className="text-xl font-bold">Analysis could not finish</h2>
@@ -322,6 +355,7 @@ export function SetupPage() {
           </LightCard>
         </div>
       </div>
-    </main>
+      </main>
+    </>
   );
 }

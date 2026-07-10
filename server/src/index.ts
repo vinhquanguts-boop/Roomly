@@ -3,8 +3,11 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { loadEnv } from './lib/env.js';
 import { readLocalFile } from './lib/storage.js';
+import { designsRouter } from './routes/designs.js';
 import { healthRouter } from './routes/health.js';
+import { productsRouter } from './routes/products.js';
 import { roomsRouter } from './routes/rooms.js';
+import { styleRouter } from './routes/style.js';
 
 loadEnv();
 
@@ -31,6 +34,9 @@ app.use(
 
 app.route('/api', healthRouter);
 app.route('/api/rooms', roomsRouter);
+app.route('/api/style', styleRouter);
+app.route('/api/designs', designsRouter);
+app.route('/api/products', productsRouter);
 
 app.get('/storage/:key{.*}', async (c) => {
   try {

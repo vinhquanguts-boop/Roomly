@@ -152,6 +152,22 @@
   }
 }
 
+/* Animation keyframes */
+@keyframes pop-in {
+  0%   { transform: scale(0.5); opacity: 0; }
+  70%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+@keyframes drag-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(199, 104, 74, 0); }
+  50%       { box-shadow: 0 0 0 8px rgba(199, 104, 74, 0.14); }
+}
+
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
   *,

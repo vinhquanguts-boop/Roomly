@@ -1,1 +1,1 @@
-export {};
+export { ChatPanel } from './ChatPanel';

@@ -13,8 +13,14 @@ const UploadPage = lazy(() =>
 const SetupPage = lazy(() =>
   import('@/pages/SetupPage').then((module) => ({ default: module.SetupPage }))
 );
-const QuizPlaceholder = lazy(() =>
-  import('@/pages/QuizPlaceholder').then((module) => ({ default: module.QuizPlaceholder }))
+const QuizPage = lazy(() =>
+  import('@/pages/QuizPage').then((module) => ({ default: module.QuizPage }))
+);
+const GeneratingPage = lazy(() =>
+  import('@/pages/GeneratingPage').then((module) => ({ default: module.GeneratingPage }))
+);
+const ResultPage = lazy(() =>
+  import('@/pages/ResultPage').then((module) => ({ default: module.ResultPage }))
 );
 
 const queryClient = new QueryClient();
@@ -35,7 +41,9 @@ function App() {
             <Route path="/design" element={<LandingPlaceholder />} />
             <Route path="/design/upload" element={<UploadPage />} />
             <Route path="/design/setup" element={<SetupPage />} />
-            <Route path="/design/quiz" element={<QuizPlaceholder />} />
+            <Route path="/design/quiz" element={<QuizPage />} />
+            <Route path="/design/generating/:id" element={<GeneratingPage />} />
+            <Route path="/design/result/:id" element={<ResultPage />} />
           </Routes>
         </Suspense>
         <Toaster position="top-center" />

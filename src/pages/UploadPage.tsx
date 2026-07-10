@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { type FileRejection, useDropzone } from 'react-dropzone';
 import { ArrowLeft, CheckCircle2, CloudUpload, ImagePlus, Loader2, X } from 'lucide-react';
+import gsap from 'gsap';
 import { Button } from '@/components/ui/button';
 import { LightCard } from '@/components/LightCard';
+import { StepProgress } from '@/components/StepProgress';
+import { usePageEntrance } from '@/hooks/usePageEntrance';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { createRoomUpload, uploadRoomImage } from '@/lib/api';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -75,6 +79,11 @@ export function UploadPage() {
   const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<UploadStep>('idle');
+  const mainRef = useRef<HTMLElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const reduced = useReducedMotion();
+
+  usePageEntrance(mainRef);
 
   useEffect(() => {
     return () => {
@@ -83,6 +92,16 @@ export function UploadPage() {
       }
     };
   }, [selectedImage]);
+
+  // Animate preview in when a new image is selected
+  useEffect(() => {
+    if (!selectedImage || !previewRef.current || reduced) return;
+    gsap.fromTo(
+      previewRef.current,
+      { opacity: 0, scale: 0.97, y: 8 },
+      { opacity: 1, scale: 1, y: 0, duration: 0.38, ease: 'power2.out', clearProps: 'all' }
+    );
+  }, [selectedImage, reduced]);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -170,7 +189,9 @@ export function UploadPage() {
   }
 
   return (
-    <main className="min-h-dvh bg-bg-base px-5 py-8 text-text-primary md:px-10">
+    <>
+      <StepProgress current={1} />
+      <main ref={mainRef} className="min-h-dvh bg-bg-base px-5 py-8 text-text-primary md:px-10">
       <div className="mx-auto max-w-[960px]">
         <Button variant="ghost" className="mb-6 gap-2 px-0 hover:bg-transparent" onClick={() => navigate('/')}>
           <ArrowLeft className="size-4" aria-hidden="true" />
@@ -189,6 +210,20 @@ export function UploadPage() {
             <div className="mt-6 rounded-lg bg-secondary-muted/70 p-4 text-sm leading-6 text-text-secondary">
               Use a bright, wide angle if possible. Avoid close-ups of single items.
             </div>
+
+            <div className="mt-6">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-text-secondary">Photo tips</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-success/30 bg-bg-elevated p-3">
+                  <p className="text-xs font-bold text-success">✓ Good</p>
+                  <p className="mt-1 text-xs leading-5 text-text-secondary">Wide-angle, bright room, full wall visible</p>
+                </div>
+                <div className="rounded-lg border border-destructive/30 bg-bg-elevated p-3">
+                  <p className="text-xs font-bold text-destructive">✕ Avoid</p>
+                  <p className="mt-1 text-xs leading-5 text-text-secondary">Close-ups of single items or very dark shots</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <LightCard className="p-4 md:p-5">
@@ -196,12 +231,14 @@ export function UploadPage() {
               {...getRootProps()}
               className={[
                 'flex min-h-[360px] flex-col items-center justify-center rounded-lg border border-dashed p-5 text-center transition',
-                isDragActive ? 'border-accent bg-[#fbf8f2]' : 'border-border-strong bg-bg-elevated',
+                isDragActive
+                  ? 'border-accent bg-[#fbf8f2] animate-[drag-pulse_1.1s_ease-in-out_infinite]'
+                  : 'border-border-strong bg-bg-elevated',
               ].join(' ')}
             >
               <input {...getInputProps()} />
               {selectedImage ? (
-                <div className="w-full">
+                <div ref={previewRef} className="w-full">
                   <div className="relative overflow-hidden rounded-lg bg-bg-inset">
                     <img
                       src={selectedImage.previewUrl}
@@ -240,12 +277,12 @@ export function UploadPage() {
                 </div>
               ) : (
                 <>
-                  <span className="flex size-16 items-center justify-center rounded-full bg-secondary-muted text-accent">
-                    <ImagePlus className="size-8" aria-hidden="true" />
+                  <span className="flex size-20 items-center justify-center rounded-full bg-secondary-muted text-accent">
+                    <ImagePlus className="size-9" aria-hidden="true" />
                   </span>
-                  <h2 className="mt-5 text-xl font-bold">Drop your room photo here</h2>
-                  <p className="mt-2 max-w-[330px] text-sm leading-6 text-text-secondary">
-                    JPG, PNG, or WebP. Maximum 10 MB. One image only.
+                  <h2 className="mt-5 font-display text-2xl font-semibold text-text-primary">Drop your room photo here</h2>
+                  <p className="mt-2 max-w-[300px] text-xs leading-5 text-text-secondary">
+                    JPG, PNG, or WebP · Max 10 MB · One image only
                   </p>
                   <Button type="button" className="mt-6" onClick={open}>
                     Choose photo
@@ -274,6 +311,7 @@ export function UploadPage() {
           </LightCard>
         </div>
       </div>
-    </main>
+      </main>
+    </>
   );
 }

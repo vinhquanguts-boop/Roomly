@@ -18,11 +18,12 @@ import { ROOM_ANALYSIS_SYSTEM, ROOM_ANALYSIS_USER } from '../prompts/roomAnalysi
 import { DESIGN_PLAN_SYSTEM, designPlanUserMessage } from '../prompts/designPlan.js';
 import { CHAT_SYSTEM } from '../prompts/chat.js';
 import { parseJsonResponse } from '../parseJson.js';
+import { renderWithReplicate } from '../render/replicate.js';
 
 const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434';
 const VLM_MODEL = process.env.OLLAMA_VLM_MODEL ?? 'qwen2.5vl:7b';
 const LLM_MODEL = process.env.OLLAMA_LLM_MODEL ?? 'qwen2.5:7b';
-const LLM_LARGE_MODEL = process.env.OLLAMA_LLM_LARGE_MODEL ?? 'qwen2.5:14b';
+const LLM_LARGE_MODEL = process.env.OLLAMA_LLM_LARGE_MODEL || LLM_MODEL;
 
 type TextPart = { type: 'text'; text: string };
 type ImagePart = { type: 'image_url'; image_url: { url: string } };
@@ -113,7 +114,9 @@ export class LocalProvider implements AIProvider {
   }
 
   async renderImage(input: RenderInput): Promise<{ url: string }> {
-    void input;
+    if ((process.env.RENDER_MODE ?? 'replicate') === 'replicate') {
+      return renderWithReplicate(input);
+    }
 
     throw new Error('Local image rendering is deferred to Phase 3 (ComfyUI).');
   }
