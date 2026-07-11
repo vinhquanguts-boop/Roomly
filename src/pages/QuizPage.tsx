@@ -6,6 +6,7 @@ import gsap from 'gsap';
 import { Button } from '@/components/ui/button';
 import { LightCard } from '@/components/LightCard';
 import { StepProgress } from '@/components/StepProgress';
+import { useCardTilt } from '@/hooks/useCardTilt';
 import { usePageEntrance } from '@/hooks/usePageEntrance';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { createDesign, type QuizAnswer, type SetupDraft } from '@/lib/api';
@@ -120,6 +121,50 @@ const QUIZ_QUESTIONS: QuizQuestion[] = [
   },
 ];
 
+type QuizOptionCardProps = {
+  option: QuizOption;
+  selected: boolean;
+  onClick: () => void;
+};
+
+function QuizOptionCard({ option, selected, onClick }: QuizOptionCardProps) {
+  const tiltRef = useCardTilt<HTMLButtonElement>(5);
+  return (
+    <button
+      ref={tiltRef}
+      type="button"
+      className={[
+        'group overflow-hidden rounded-lg border bg-bg-elevated text-left transition-all duration-200',
+        selected
+          ? 'scale-[1.015] border-accent shadow-[0_0_0_3px_rgba(199,104,74,0.12)]'
+          : 'border-border-subtle hover:scale-[1.005] hover:border-border-strong hover:shadow-card',
+      ].join(' ')}
+      onClick={onClick}
+    >
+      <div className="relative overflow-hidden">
+        <img src={option.image} alt="" className="h-36 w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+        <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+          <span className="w-full px-3 pb-2 text-xs font-semibold text-white">{option.caption}</span>
+        </div>
+      </div>
+      <span className="flex min-h-[94px] items-start justify-between gap-3 p-4">
+        <span>
+          <span className="block font-bold">{option.title}</span>
+          <span className="mt-1 block text-sm text-text-secondary group-hover:invisible">{option.caption}</span>
+        </span>
+        {selected ? (
+          <CheckCircle2
+            className="mt-1 size-5 shrink-0 text-success animate-[pop-in_0.25s_cubic-bezier(0.34,1.56,0.64,1)_both]"
+            aria-hidden="true"
+          />
+        ) : (
+          <span className="mt-1 size-5 shrink-0" aria-hidden="true" />
+        )}
+      </span>
+    </button>
+  );
+}
+
 function readSetupDraft(roomId: string | null): SetupDraft | null {
   if (!roomId) return null;
 
@@ -144,9 +189,12 @@ export function QuizPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [finalNotes, setFinalNotes] = useState('');
   const mainRef = useRef<HTMLElement>(null);
   const questionContentRef = useRef<HTMLDivElement>(null);
+  const finalNotesRef = useRef<HTMLDivElement>(null);
   const prevIndexRef = useRef<number>(-1);
+  const latestAnswerRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
 
   usePageEntrance(mainRef);
@@ -171,7 +219,24 @@ export function QuizPage() {
 
   const currentQuestion = QUIZ_QUESTIONS[currentIndex];
   const answeredCount = Object.keys(answers).length;
+  const isLastQuestion = currentIndex === QUIZ_QUESTIONS.length - 1;
   const isComplete = answeredCount === QUIZ_QUESTIONS.length;
+
+  // Animate finalNotes section in after last question is answered
+  useEffect(() => {
+    if (!finalNotesRef.current || !isComplete || reduced) return;
+    gsap.fromTo(finalNotesRef.current, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out', clearProps: 'all' });
+  }, [isComplete, reduced]);
+
+  // Slide in the most recently accumulated answer in the sidebar
+  useEffect(() => {
+    if (!latestAnswerRef.current || reduced) return;
+    gsap.fromTo(
+      latestAnswerRef.current,
+      { opacity: 0, x: 16 },
+      { opacity: 1, x: 0, duration: 0.3, ease: 'power3.out', clearProps: 'all' }
+    );
+  }, [answeredCount, reduced]);
 
   function chooseAnswer(questionId: string, optionId: string) {
     setAnswers((current) => ({ ...current, [questionId]: optionId }));
@@ -193,10 +258,16 @@ export function QuizPage() {
     setIsSubmitting(true);
     setError(null);
 
+    // Merge finalNotes with any userNotes from setup
+    const mergedSetup: SetupDraft = {
+      ...setupDraft,
+      userNotes: [setupDraft.userNotes, finalNotes].filter(Boolean).join('\n\n') || undefined,
+    };
+
     try {
       const { designId } = await createDesign({
         roomId,
-        setup: setupDraft,
+        setup: mergedSetup,
         quizAnswers,
       });
       navigate(`/design/generating/${designId}`);
@@ -238,7 +309,7 @@ export function QuizPage() {
 
         <div className="grid gap-8 lg:grid-cols-[0.72fr_1.28fr]">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-accent">Step 3</p>
+            <p className="text-overline text-accent">Your taste</p>
             <h1 className="mt-3 font-display text-[38px] font-semibold leading-tight md:text-[48px]">
               Choose your style direction
             </h1>
@@ -252,10 +323,15 @@ export function QuizPage() {
             {answeredCount > 0 && (
               <div className="mt-4 space-y-1.5">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-text-secondary">Your direction</p>
-                {QUIZ_QUESTIONS.slice(0, answeredCount).map((q) => {
+                {QUIZ_QUESTIONS.slice(0, answeredCount).map((q, index) => {
                   const chosen = q.options.find((o) => o.id === answers[q.id]);
+                  const isLatest = index === answeredCount - 1;
                   return chosen ? (
-                    <div key={q.id} className="flex items-center gap-2 text-sm">
+                    <div
+                      key={q.id}
+                      ref={isLatest ? latestAnswerRef : undefined}
+                      className="flex items-center gap-2 text-sm"
+                    >
                       <span className="text-accent" aria-hidden="true">·</span>
                       <span className="font-semibold text-text-primary">{chosen.title}</span>
                       <span className="text-text-secondary">— {q.eyebrow}</span>
@@ -277,45 +353,20 @@ export function QuizPage() {
               </div>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                {currentQuestion.options.map((option) => {
-                  const selected = answers[currentQuestion.id] === option.id;
-
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      className={[
-                        'overflow-hidden rounded-lg border bg-bg-elevated text-left transition-all duration-200',
-                        selected
-                          ? 'scale-[1.015] border-accent shadow-[0_0_0_3px_rgba(199,104,74,0.12)]'
-                          : 'border-border-subtle hover:scale-[1.005] hover:border-border-strong hover:shadow-card',
-                      ].join(' ')}
-                      onClick={() => chooseAnswer(currentQuestion.id, option.id)}
-                    >
-                      <img src={option.image} alt="" className="h-36 w-full object-cover" />
-                      <span className="flex min-h-[94px] items-start justify-between gap-3 p-4">
-                        <span>
-                          <span className="block font-bold">{option.title}</span>
-                          <span className="mt-1 block text-sm text-text-secondary">{option.caption}</span>
-                        </span>
-                        {selected ? (
-                          <CheckCircle2
-                            className="mt-1 size-5 shrink-0 text-success animate-[pop-in_0.25s_cubic-bezier(0.34,1.56,0.64,1)_both]"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <span className="mt-1 size-5 shrink-0" aria-hidden="true" />
-                        )}
-                      </span>
-                    </button>
-                  );
-                })}
+                {currentQuestion.options.map((option) => (
+                  <QuizOptionCard
+                    key={option.id}
+                    option={option}
+                    selected={answers[currentQuestion.id] === option.id}
+                    onClick={() => chooseAnswer(currentQuestion.id, option.id)}
+                  />
+                ))}
               </div>
             </div>
 
-            {/* Step dot progress */}
+            {/* Step dot progress + N/5 label */}
             <div
-              className="mt-5 flex items-center justify-center gap-2"
+              className="mt-5 flex items-center justify-center gap-3"
               aria-label={`Question ${currentIndex + 1} of ${QUIZ_QUESTIONS.length}`}
             >
               {QUIZ_QUESTIONS.map((q, i) => {
@@ -336,7 +387,29 @@ export function QuizPage() {
                   />
                 );
               })}
+              <span className="ml-1 text-xs font-semibold text-text-secondary">
+                {currentIndex + 1}/{QUIZ_QUESTIONS.length}
+              </span>
             </div>
+
+            {/* Final notes textarea — appears after last question is answered */}
+            {isLastQuestion && isComplete && (
+              <div ref={finalNotesRef} className="mt-5 border-t border-border-subtle pt-5" style={{ opacity: 0 }}>
+                <label className="text-sm font-bold" htmlFor="finalNotes">
+                  Anything else to guide the design?
+                  <span className="ml-2 text-xs font-normal text-text-secondary">optional</span>
+                </label>
+                <textarea
+                  id="finalNotes"
+                  rows={3}
+                  maxLength={400}
+                  value={finalNotes}
+                  onChange={(e) => setFinalNotes(e.target.value)}
+                  placeholder="e.g. Please avoid white furniture — I have a cat. I prefer wall shelves over a bookcase."
+                  className="mt-2 w-full resize-none rounded-md border border-border-subtle bg-bg-elevated px-3 py-2.5 text-sm leading-6 outline-none focus:border-accent"
+                />
+              </div>
+            )}
 
             {error ? <p className="mt-4 text-sm font-semibold text-destructive">{error}</p> : null}
 
@@ -349,7 +422,7 @@ export function QuizPage() {
               >
                 Previous
               </Button>
-              {currentIndex < QUIZ_QUESTIONS.length - 1 ? (
+              {!isLastQuestion ? (
                 <Button
                   type="button"
                   disabled={!answers[currentQuestion.id] || isSubmitting}

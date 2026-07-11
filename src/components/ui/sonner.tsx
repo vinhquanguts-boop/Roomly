@@ -30,6 +30,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--border-radius": "var(--radius)",
         } as React.CSSProperties
       }
+      toastOptions={{
+        classNames: {
+          toast: "animate-in slide-in-from-top-2 fade-in-0 duration-300",
+        },
+      }}
       {...props}
     />
   )

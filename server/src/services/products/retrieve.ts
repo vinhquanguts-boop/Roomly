@@ -129,6 +129,8 @@ function scoreProduct(input: {
   score += Math.min(tokenMatches * 8, 32);
   score += Math.min(Number(input.product.rating ?? 0) * 2, 10);
   score += Math.min(input.product.soldCount / 250, 8);
+  // Trust only breaks close ties. It never excludes a product that is the best fit or price.
+  score -= Math.min(Number(input.product.qualityRiskScore ?? 0) * 8, 8);
 
   const targetMidpoint = (input.need.priceMin + input.need.priceMax) / 2;
   score -= Math.abs(price - targetMidpoint) / Math.max(targetMidpoint, 1);
@@ -146,6 +148,7 @@ export async function findProductForDesignNeed(input: {
   currency: string;
   excludeProductIds?: string[];
   usedRetailers?: string[];
+  allowedRetailers?: string[];
 }): Promise<MatchedDesignItem | null> {
   const catalogCategory = inferCatalogCategory(input.category, input.descriptor);
   const excluded = new Set(input.excludeProductIds ?? []);
@@ -166,6 +169,7 @@ export async function findProductForDesignNeed(input: {
 
   const match = catalog
     .filter((product) => !excluded.has(product.id))
+    .filter((product) => !input.allowedRetailers || input.allowedRetailers.includes(product.retailer))
     .filter((product) => product.category === catalogCategory)
     .filter((product) => Number(product.price) <= input.priceMax)
     .map((product) => ({
@@ -197,6 +201,7 @@ export async function findShoppingListForPlan(input: {
   plan: DesignPlan;
   budget: number;
   currency: string;
+  allowedRetailers?: string[];
 }): Promise<MatchedDesignItem[]> {
   const db = getDb();
   const catalog = await db
@@ -213,6 +218,7 @@ export async function findShoppingListForPlan(input: {
     const catalogCategory = inferCatalogCategory(need.category, need.descriptor);
     const candidates = catalog
       .filter((product) => !usedProductIds.has(product.id))
+      .filter((product) => !input.allowedRetailers || input.allowedRetailers.includes(product.retailer))
       .filter((product) => product.category === catalogCategory)
       .map((product) => ({
         product,

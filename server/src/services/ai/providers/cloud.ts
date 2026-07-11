@@ -4,6 +4,8 @@ import type {
   ChatToolCall,
   DesignPlan,
   DesignPlanInput,
+  PreDesignChatInput,
+  PreDesignChatOutput,
   RenderInput,
   RoomAnalysis,
   SegmentInput,
@@ -12,11 +14,13 @@ import {
   chatToolCallSchema,
   designPlanSchema,
   normalizeDesignPlanPayload,
+  preDesignChatOutputSchema,
   roomAnalysisSchema,
 } from '../types.js';
 import { ROOM_ANALYSIS_SYSTEM, ROOM_ANALYSIS_USER } from '../prompts/roomAnalysis.js';
 import { DESIGN_PLAN_SYSTEM, designPlanUserMessage } from '../prompts/designPlan.js';
 import { CHAT_SYSTEM } from '../prompts/chat.js';
+import { PRE_DESIGN_CHAT_SYSTEM } from '../prompts/preDesignChat.js';
 import { parseJsonResponse } from '../parseJson.js';
 import { renderWithReplicate } from '../render/replicate.js';
 
@@ -101,6 +105,15 @@ export class CloudProvider implements AIProvider {
       { role: 'user', content: input.userMessage },
     ]);
     return chatToolCallSchema.parse(parseJsonResponse(content));
+  }
+
+  async preDesignChat(input: PreDesignChatInput): Promise<PreDesignChatOutput> {
+    const content = await fireworksChat(LLM_MODEL, [
+      { role: 'system', content: PRE_DESIGN_CHAT_SYSTEM },
+      ...input.history,
+      { role: 'user', content: input.userMessage },
+    ]);
+    return preDesignChatOutputSchema.parse(parseJsonResponse(content));
   }
 
   async renderImage(input: RenderInput): Promise<{ url: string }> {

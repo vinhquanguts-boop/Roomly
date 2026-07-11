@@ -1,15 +1,22 @@
 import { useEffect, useRef } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { ArrowLeft, CheckCircle2, Clock3, Palette, Ruler, SunMedium } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Clock3, MessageSquare, Palette, Ruler, SunMedium } from 'lucide-react';
+import gsap from 'gsap';
 import { z } from 'zod';
 import { LightCard } from '@/components/LightCard';
 import { StepProgress } from '@/components/StepProgress';
 import { Button } from '@/components/ui/button';
 import { usePageEntrance } from '@/hooks/usePageEntrance';
-import { analyzeRoom, type RoomAnalysis } from '@/lib/api';
+import { useStaggerReveal } from '@/hooks/useStaggerReveal';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { analyzeRoom, type DesignBrief, type RoomAnalysis } from '@/lib/api';
+import { trackEvent } from '@/lib/analytics';
+import { cn } from '@/lib/utils';
+
+const CURRENCIES = ['AUD', 'USD', 'NZD'] as const;
 
 const setupSchema = z.object({
   budget: z.coerce
@@ -29,10 +36,23 @@ const setupSchema = z.object({
   ]),
   deliveryUrgency: z.enum(['urgent', 'normal', 'flexible']),
   stylePreference: z.string().trim().min(2, 'Add a short style preference.').max(80),
+  userNotes: z.string().max(400).optional().default(''),
 });
 
 type SetupFormInput = z.input<typeof setupSchema>;
 type SetupFormValues = z.output<typeof setupSchema>;
+
+function readChatBrief(): DesignBrief | null {
+  const raw = sessionStorage.getItem('roomly.chat.brief');
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as DesignBrief;
+  } catch {
+    sessionStorage.removeItem('roomly.chat.brief');
+    return null;
+  }
+}
 
 const ROOM_TYPE_LABELS: Record<RoomAnalysis['roomType'], string> = {
   bedroom: 'Bedroom',
@@ -127,8 +147,16 @@ export function SetupPage() {
   const navigate = useNavigate();
   const roomId = searchParams.get('room');
   const mainRef = useRef<HTMLElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const budgetFieldRef = useRef<HTMLDivElement>(null);
+  const currencyIndicatorRef = useRef<HTMLDivElement>(null);
+  const analysisTrackedRef = useRef(false);
+  const reduced = useReducedMotion();
+  const chatBrief = typeof window !== 'undefined' ? readChatBrief() : null;
+  const hasChatRoomType = Boolean(chatBrief?.roomType);
 
   usePageEntrance(mainRef);
+  useStaggerReveal(formRef, { stagger: 0.07, delay: 0.15 });
 
   const analysisQuery = useQuery({
     queryKey: ['room-analysis', roomId],
@@ -143,19 +171,48 @@ export function SetupPage() {
   const form = useForm<SetupFormInput, unknown, SetupFormValues>({
     resolver: zodResolver(setupSchema),
     defaultValues: {
-      budget: 300,
-      currency: 'AUD',
-      roomTypeOverride: 'other',
-      deliveryUrgency: 'normal',
-      stylePreference: 'warm minimalist',
+      budget: chatBrief?.budget ?? 300,
+      currency: chatBrief?.currency ?? 'AUD',
+      roomTypeOverride: chatBrief?.roomType ?? 'other',
+      deliveryUrgency: chatBrief?.deliveryUrgency ?? 'normal',
+      stylePreference: chatBrief?.stylePreference ?? 'warm minimalist',
+      userNotes: chatBrief?.userNotes ?? '',
     },
   });
+  const budgetRegistration = form.register('budget');
 
   useEffect(() => {
     if (analysisQuery.data?.analysis) {
-      form.setValue('roomTypeOverride', analysisQuery.data.analysis.roomType);
+      if (!hasChatRoomType) {
+        form.setValue('roomTypeOverride', analysisQuery.data.analysis.roomType);
+      }
+      if (!analysisTrackedRef.current) {
+        analysisTrackedRef.current = true;
+        trackEvent('analysis_complete', { room_type: analysisQuery.data.analysis.roomType });
+      }
     }
-  }, [analysisQuery.data?.analysis, form]);
+  }, [analysisQuery.data?.analysis, form, hasChatRoomType]);
+
+  const currencyValue = useWatch({ control: form.control, name: 'currency', defaultValue: 'AUD' });
+
+  useEffect(() => {
+    if (!currencyIndicatorRef.current) return;
+    const index = CURRENCIES.indexOf(currencyValue);
+    if (reduced) {
+      gsap.set(currencyIndicatorRef.current, { xPercent: index * 100 });
+      return;
+    }
+    gsap.to(currencyIndicatorRef.current, { xPercent: index * 100, duration: 0.22, ease: 'power3.out' });
+  }, [currencyValue, reduced]);
+
+  function bounceBudgetField() {
+    if (!budgetFieldRef.current || reduced) return;
+    gsap.fromTo(
+      budgetFieldRef.current,
+      { scale: 1.02 },
+      { scale: 1, duration: 0.35, ease: 'elastic.out(1, 0.5)', clearProps: 'all' }
+    );
+  }
 
   function handleSubmit(values: SetupFormValues) {
     if (!roomId) return;
@@ -167,6 +224,8 @@ export function SetupPage() {
         ...values,
       })
     );
+    // Clear the chat brief after using it
+    sessionStorage.removeItem('roomly.chat.brief');
     navigate(`/design/quiz?room=${roomId}`);
   }
 
@@ -199,7 +258,16 @@ export function SetupPage() {
 
         <div className="grid gap-8 lg:grid-cols-[1.08fr_0.92fr]">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-accent">Step 2</p>
+            {chatBrief && (
+              <div className="mb-5 flex items-start gap-3 rounded-lg border border-accent/20 bg-accent/5 px-4 py-3">
+                <MessageSquare className="mt-0.5 size-4 shrink-0 text-accent" />
+                <p className="text-sm text-text-secondary">
+                  <span className="font-semibold text-text-primary">Pre-filled from your chat.</span>{' '}
+                  Your style preferences have been carried over — feel free to adjust.
+                </p>
+              </div>
+            )}
+            <p className="text-overline text-accent">Room details</p>
             <h1 className="mt-3 font-display text-[38px] font-semibold leading-tight md:text-[48px]">
               Review your room analysis
             </h1>
@@ -263,8 +331,8 @@ export function SetupPage() {
               <h2 className="text-xl font-bold">Design setup</h2>
             </div>
 
-            <form className="mt-6 space-y-5" noValidate onSubmit={form.handleSubmit(handleSubmit)}>
-              <div>
+            <form ref={formRef} className="mt-6 space-y-5" noValidate onSubmit={form.handleSubmit(handleSubmit)}>
+              <div ref={budgetFieldRef} data-stagger className="field-focus-glow rounded-md">
                 <label className="text-sm font-bold" htmlFor="budget">
                   Budget
                 </label>
@@ -275,7 +343,11 @@ export function SetupPage() {
                   max="5000"
                   step="10"
                   className="mt-2 h-11 w-full rounded-md border border-border-subtle bg-bg-elevated px-3 outline-none focus:border-accent"
-                  {...form.register('budget')}
+                  {...budgetRegistration}
+                  onBlur={(event) => {
+                    void budgetRegistration.onBlur(event);
+                    bounceBudgetField();
+                  }}
                 />
                 {form.formState.errors.budget ? (
                   <p className="mt-2 text-sm font-semibold text-destructive">{form.formState.errors.budget.message}</p>
@@ -283,22 +355,31 @@ export function SetupPage() {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="text-sm font-bold" htmlFor="currency">
-                    Currency
-                  </label>
-                  <select
-                    id="currency"
-                    className="mt-2 h-11 w-full rounded-md border border-border-subtle bg-bg-elevated px-3 outline-none focus:border-accent"
-                    {...form.register('currency')}
-                  >
-                    <option value="AUD">AUD</option>
-                    <option value="USD">USD</option>
-                    <option value="NZD">NZD</option>
-                  </select>
+                <div data-stagger className="field-focus-glow rounded-md">
+                  <label className="text-sm font-bold">Currency</label>
+                  <div className="relative mt-2 grid h-11 grid-cols-3 overflow-hidden rounded-md border border-border-subtle bg-bg-elevated">
+                    <div
+                      ref={currencyIndicatorRef}
+                      className="absolute inset-y-0 left-0 w-1/3 bg-accent"
+                      aria-hidden="true"
+                    />
+                    {CURRENCIES.map((currency) => (
+                      <button
+                        key={currency}
+                        type="button"
+                        className={cn(
+                          'relative z-10 text-sm font-semibold transition-colors',
+                          currencyValue === currency ? 'text-white' : 'text-text-secondary'
+                        )}
+                        onClick={() => form.setValue('currency', currency, { shouldValidate: true })}
+                      >
+                        {currency}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <div>
+                <div data-stagger className="field-focus-glow rounded-md">
                   <label className="text-sm font-bold" htmlFor="deliveryUrgency">
                     Delivery
                   </label>
@@ -314,7 +395,7 @@ export function SetupPage() {
                 </div>
               </div>
 
-              <div>
+              <div data-stagger className="field-focus-glow rounded-md">
                 <label className="text-sm font-bold" htmlFor="roomTypeOverride">
                   Room type
                 </label>
@@ -331,7 +412,7 @@ export function SetupPage() {
                 </select>
               </div>
 
-              <div>
+              <div data-stagger className="field-focus-glow rounded-md">
                 <label className="text-sm font-bold" htmlFor="stylePreference">
                   Style preference
                 </label>
@@ -346,6 +427,21 @@ export function SetupPage() {
                     {form.formState.errors.stylePreference.message}
                   </p>
                 ) : null}
+              </div>
+
+              <div data-stagger className="field-focus-glow rounded-md">
+                <label className="text-sm font-bold" htmlFor="userNotes">
+                  Anything else we should know?
+                  <span className="ml-2 text-xs font-normal text-text-secondary">optional · 400 chars</span>
+                </label>
+                <textarea
+                  id="userNotes"
+                  rows={3}
+                  maxLength={400}
+                  placeholder="e.g. I have a low bed and a large window on the north wall. Looking for a cozy, earthy feel."
+                  className="mt-2 w-full resize-none rounded-md border border-border-subtle bg-bg-elevated px-3 py-2.5 text-sm leading-6 outline-none focus:border-accent"
+                  {...form.register('userNotes')}
+                />
               </div>
 
               <Button type="submit" className="w-full" disabled={!analysisQuery.data}>

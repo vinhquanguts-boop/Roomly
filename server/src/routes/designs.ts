@@ -1,9 +1,17 @@
 import { zValidator } from '@hono/zod-validator';
-import { asc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import { getDb } from '../db/index.js';
-import { chatMessages, designItems, designs, products, rooms } from '../db/schema.js';
+import { chatMessages, designItems, designs, publicDesigns, rooms } from '../db/schema.js';
+import {
+  buildStyleTags,
+  getDesignItemsWithProducts,
+  serializeDesign,
+  serializePublicDesign,
+} from '../lib/design-serialization.js';
+import { getRequestOwner, type RequestOwner } from '../lib/request-context.js';
 import { getAI } from '../services/ai/index.js';
 import { composeRenderPrompt, DEFAULT_NEGATIVE_PROMPT } from '../services/ai/prompts/render.js';
 import {
@@ -13,8 +21,24 @@ import {
   type DesignPlan,
   type DesignPlanInput,
 } from '../services/ai/types.js';
-import { findProductForDesignNeed, findShoppingListForPlan } from '../services/products/index.js';
+import {
+  findProductForDesignNeed,
+  findShoppingListForPlan,
+  groundDesignPlanToRetailPrices,
+  type MatchedDesignItem,
+} from '../services/products/index.js';
 import { deriveStyleFromQuiz, quizAnswersSchema, StyleQuizError } from '../services/styleQuiz.js';
+import {
+  getDesignUsage,
+  getEffectivePlan,
+  getPlanLimits,
+  isAuthenticatedOwner,
+  isPlanLimitReached,
+  planFeatureError,
+  planLimitError,
+  type Plan,
+} from '../lib/entitlements.js';
+import { takeRateLimit } from '../lib/rate-limit.js';
 
 const setupSchema = z.object({
   budget: z.coerce.number().min(50).max(5000),
@@ -47,9 +71,90 @@ type CreateDesignInput = z.infer<typeof createDesignSchema>;
 
 export const designsRouter = new Hono();
 
-const CHAT_LIMIT_WINDOW_MS = 60_000;
-const CHAT_LIMIT_MAX = 3;
-const chatLimiter = new Map<string, number[]>();
+const FRONTEND_BASE_URL = process.env.VITE_APP_URL || 'http://localhost:5173';
+
+function publicDesignUrl(slug: string): string {
+  return `${FRONTEND_BASE_URL.replace(/\/+$/g, '')}/explore/${slug}`;
+}
+
+function canManageDesign(design: typeof designs.$inferSelect, owner: RequestOwner): boolean {
+  if (design.ownerAuthUserId) {
+    return owner.authUserId === design.ownerAuthUserId;
+  }
+
+  if (design.ownerSessionId) {
+    return owner.sessionId === design.ownerSessionId;
+  }
+
+  return false;
+}
+
+function ownerColumns(owner: RequestOwner) {
+  return {
+    ownerSessionId: owner.sessionId,
+    ownerAuthUserId: owner.authUserId,
+  };
+}
+
+function isSaveableDesign(design: typeof designs.$inferSelect): boolean {
+  return design.status === 'complete' || design.status === 'render_ready' || design.status === 'plan_ready';
+}
+
+async function ensureSharedSlug(design: typeof designs.$inferSelect): Promise<string> {
+  if (design.sharedSlug) {
+    return design.sharedSlug;
+  }
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const candidate = `room-${nanoid(10)}`;
+    const [existing] = await getDb().select().from(designs).where(eq(designs.sharedSlug, candidate)).limit(1);
+    if (existing) continue;
+
+    await getDb()
+      .update(designs)
+      .set({
+        sharedSlug: candidate,
+        updatedAt: new Date(),
+      })
+      .where(eq(designs.id, design.id));
+    return candidate;
+  }
+
+  throw new Error('Could not create a public share slug.');
+}
+
+async function upsertPublicDesign(design: typeof designs.$inferSelect, slug: string) {
+  const parsedPlan = designPlanSchema.safeParse(design.designPlan);
+  const styleTags = buildStyleTags(parsedPlan.success ? parsedPlan.data : null, design.styleDirection);
+  const [existing] = await getDb()
+    .select()
+    .from(publicDesigns)
+    .where(eq(publicDesigns.designId, design.id))
+    .limit(1);
+
+  if (existing) {
+    const [updated] = await getDb()
+      .update(publicDesigns)
+      .set({ styleTags })
+      .where(eq(publicDesigns.designId, design.id))
+      .returning();
+    return updated;
+  }
+
+  const [created] = await getDb()
+    .insert(publicDesigns)
+    .values({
+      designId: design.id,
+      styleTags,
+    })
+    .returning();
+
+  if (!slug) {
+    throw new Error('A public slug is required.');
+  }
+
+  return created;
+}
 
 function isPlanOnlyRenderMode(): boolean {
   return process.env.RENDER_MODE === 'plan-only';
@@ -98,14 +203,15 @@ async function persistShoppingList(params: {
   plan: DesignPlan;
   budget: number;
   currency: string;
-}): Promise<void> {
+  allowedRetailers?: string[];
+}): Promise<MatchedDesignItem[]> {
   const matches = await findShoppingListForPlan(params);
   const db = getDb();
 
   await db.delete(designItems).where(eq(designItems.designId, params.designId));
 
   if (matches.length === 0) {
-    return;
+    return matches;
   }
 
   await db.insert(designItems).values(
@@ -119,6 +225,8 @@ async function persistShoppingList(params: {
       currencyAtGeneration: match.product.currency,
     }))
   );
+
+  return matches;
 }
 
 async function runDesignPipeline(params: {
@@ -126,9 +234,24 @@ async function runDesignPipeline(params: {
   roomImageUrl: string;
   roomType: CreateDesignInput['setup']['roomTypeOverride'];
   input: DesignPlanInput;
+  plan: Plan;
 }): Promise<void> {
   try {
-    const plan = designPlanSchema.parse(await generatePlanUnderBudget(params.input));
+    const generatedPlan = designPlanSchema.parse(await generatePlanUnderBudget(params.input));
+    const matches = await persistShoppingList({
+      designId: params.designId,
+      plan: generatedPlan,
+      budget: params.input.budget,
+      currency: params.input.currency,
+      allowedRetailers: getPlanLimits(params.plan).allowedRetailers,
+    });
+    const plan = groundDesignPlanToRetailPrices(
+      generatedPlan,
+      matches.map((match) => ({
+        position: match.position,
+        price: Number(match.product.price),
+      }))
+    );
 
     await getDb()
       .update(designs)
@@ -139,14 +262,7 @@ async function runDesignPipeline(params: {
       })
       .where(eq(designs.id, params.designId));
 
-    await persistShoppingList({
-      designId: params.designId,
-      plan,
-      budget: params.input.budget,
-      currency: params.input.currency,
-    });
-
-    if (isPlanOnlyRenderMode()) {
+    if (isPlanOnlyRenderMode() || !getPlanLimits(params.plan).canRender) {
       await getDb()
         .update(designs)
         .set({
@@ -184,24 +300,12 @@ async function runDesignPipeline(params: {
   }
 }
 
-async function getDesignItems(designId: string) {
-  return getDb()
-    .select({
-      designItem: designItems,
-      product: products,
-    })
-    .from(designItems)
-    .leftJoin(products, eq(designItems.productId, products.id))
-    .where(eq(designItems.designId, designId))
-    .orderBy(asc(designItems.position));
-}
-
 async function getChatMessages(designId: string) {
   return getDb()
     .select()
     .from(chatMessages)
     .where(eq(chatMessages.designId, designId))
-    .orderBy(asc(chatMessages.createdAt));
+    .orderBy(chatMessages.createdAt);
 }
 
 function serializeChatMessage(message: typeof chatMessages.$inferSelect) {
@@ -214,22 +318,13 @@ function serializeChatMessage(message: typeof chatMessages.$inferSelect) {
 }
 
 function checkChatLimit(designId: string): boolean {
-  const now = Date.now();
-  const recent = (chatLimiter.get(designId) ?? []).filter((timestamp) => now - timestamp < CHAT_LIMIT_WINDOW_MS);
-  if (recent.length >= CHAT_LIMIT_MAX) {
-    chatLimiter.set(designId, recent);
-    return false;
-  }
-
-  recent.push(now);
-  chatLimiter.set(designId, recent);
-  return true;
+  return takeRateLimit(`chat:${designId}`, 3, 60_000).allowed;
 }
 
 function buildDesignContext(params: {
   design: typeof designs.$inferSelect;
   plan: DesignPlan;
-  items: Awaited<ReturnType<typeof getDesignItems>>;
+  items: Awaited<ReturnType<typeof getDesignItemsWithProducts>>;
 }): string {
   const itemLines = params.items.map(({ designItem, product }) => {
     const price = designItem.priceAtGeneration ? Number(designItem.priceAtGeneration) : product ? Number(product.price) : null;
@@ -276,7 +371,7 @@ function inferStyleRegenerationRequest(message: string): string | null {
 
 async function applySwapItem(params: {
   design: typeof designs.$inferSelect;
-  items: Awaited<ReturnType<typeof getDesignItems>>;
+  items: Awaited<ReturnType<typeof getDesignItemsWithProducts>>;
   toolCall: Extract<ChatToolCall, { action: 'swap_item' }>;
   userMessage: string;
 }): Promise<{ changedPosition: number | null; text: string; action: 'answer' | 'swap_item' }> {
@@ -317,6 +412,11 @@ async function applySwapItem(params: {
     currency: params.design.currency,
     excludeProductIds: currentProductIds,
     usedRetailers,
+    allowedRetailers: getPlanLimits(getEffectivePlan({
+      sessionId: params.design.ownerSessionId ?? '',
+      authUserId: params.design.ownerAuthUserId,
+      authUserEmail: null,
+    })).allowedRetailers,
   });
 
   if (!match) {
@@ -340,6 +440,28 @@ async function applySwapItem(params: {
     })
     .where(eq(designItems.id, target.designItem.id));
 
+  const parsedPlan = designPlanSchema.safeParse(params.design.designPlan);
+  if (parsedPlan.success) {
+    const updatedItems = await getDesignItemsWithProducts(params.design.id);
+    const groundedPlan = groundDesignPlanToRetailPrices(
+      parsedPlan.data,
+      updatedItems
+        .filter(({ product }) => product)
+        .map(({ designItem, product }) => ({
+          position: designItem.position,
+          price: Number(product?.price),
+        }))
+    );
+
+    await getDb()
+      .update(designs)
+      .set({
+        designPlan: groundedPlan,
+        updatedAt: new Date(),
+      })
+      .where(eq(designs.id, params.design.id));
+  }
+
   return {
     changedPosition: target.designItem.position,
     action: 'swap_item',
@@ -356,7 +478,7 @@ async function applyRegenerateAll(params: {
   const roomAnalysis = roomAnalysisSchema.parse(params.room.vlmAnalysis);
   const budget = params.toolCall.newBudget ?? Number(params.design.budget);
   const styleDirection = params.toolCall.newStyleDirection ?? params.design.styleDirection ?? params.plan.styleDirection;
-  const nextPlan = designPlanSchema.parse(await generatePlanUnderBudget({
+  const generatedPlan = designPlanSchema.parse(await generatePlanUnderBudget({
     roomAnalysis,
     budget,
     currency: params.design.currency,
@@ -364,6 +486,25 @@ async function applyRegenerateAll(params: {
     deliveryUrgency: 'normal',
     existingItemsToKeep: roomAnalysis.detectedItems.filter((item) => item.keepRecommended).map((item) => item.name),
   }));
+
+  const matches = await persistShoppingList({
+    designId: params.design.id,
+    plan: generatedPlan,
+    budget,
+    currency: params.design.currency,
+    allowedRetailers: getPlanLimits(getEffectivePlan({
+      sessionId: params.design.ownerSessionId ?? '',
+      authUserId: params.design.ownerAuthUserId,
+      authUserEmail: null,
+    })).allowedRetailers,
+  });
+  const nextPlan = groundDesignPlanToRetailPrices(
+    generatedPlan,
+    matches.map((match) => ({
+      position: match.position,
+      price: Number(match.product.price),
+    }))
+  );
 
   await getDb()
     .update(designs)
@@ -377,67 +518,31 @@ async function applyRegenerateAll(params: {
     })
     .where(eq(designs.id, params.design.id));
 
-  await persistShoppingList({
-    designId: params.design.id,
-    plan: nextPlan,
-    budget,
-    currency: params.design.currency,
-  });
+  await getDb()
+    .update(publicDesigns)
+    .set({ styleTags: buildStyleTags(nextPlan, styleDirection) })
+    .where(eq(publicDesigns.designId, params.design.id));
 
   return `I regenerated the room around ${nextPlan.styleDirection} and rebuilt the shopping list within your ${budget.toFixed(0)} ${params.design.currency} budget.`;
 }
 
-async function serializeDesign(design: typeof designs.$inferSelect) {
-  const parsedPlan = designPlanSchema.safeParse(design.designPlan);
-  const failedPlan = design.designPlan as { error?: unknown } | null;
-  const items = await getDesignItems(design.id);
-  const errorMessage =
-    design.status === 'failed' && typeof failedPlan?.error === 'string'
-      ? failedPlan.error
-      : design.status === 'failed' && parsedPlan.success && !design.renderUrl
-        ? 'Render failed after design plan generation.'
-        : null;
-
-  return {
-    id: design.id,
-    roomId: design.roomId,
-    status: design.status,
-    budget: Number(design.budget),
-    currency: design.currency,
-    styleDirection: design.styleDirection,
-    designPlan: parsedPlan.success ? parsedPlan.data : null,
-    renderUrl: design.renderUrl,
-    errorMessage,
-    items: items.map(({ designItem, product }) => ({
-      designItemId: designItem.id,
-      position: designItem.position,
-      category: designItem.category,
-      rationale: designItem.rationale,
-      priceAtGeneration: designItem.priceAtGeneration ? Number(designItem.priceAtGeneration) : null,
-      currencyAtGeneration: designItem.currencyAtGeneration,
-      product: product
-        ? {
-            id: product.id,
-            retailer: product.retailer,
-            title: product.title,
-            description: product.description,
-            imageUrl: product.imageUrl,
-            productUrl: product.productUrl,
-            price: Number(product.price),
-            currency: product.currency,
-            deliveryEstimate: product.deliveryEstimate,
-            rating: product.rating ? Number(product.rating) : null,
-            qualityRiskScore: product.qualityRiskScore ? Number(product.qualityRiskScore) : null,
-          }
-        : null,
-    })),
-    createdAt: design.createdAt.toISOString(),
-    updatedAt: design.updatedAt.toISOString(),
-  };
-}
-
 designsRouter.post('/', zValidator('json', createDesignSchema), async (c) => {
   const payload = c.req.valid('json');
+  const owner = await getRequestOwner(c);
+  if (!isAuthenticatedOwner(owner)) {
+    const limit = takeRateLimit(`anonymous-design:${owner.sessionId}`, 5, 24 * 60 * 60 * 1000);
+    if (!limit.allowed) {
+      c.header('Retry-After', String(limit.retryAfterSeconds));
+      return c.json({ code: 'ANONYMOUS_DAILY_LIMIT_REACHED', error: 'You have reached today\'s anonymous design limit. Sign in or try again tomorrow.' }, 429);
+    }
+  }
+  if (isAuthenticatedOwner(owner)) {
+    const plan = getEffectivePlan(owner);
+    const usage = await getDesignUsage(owner);
+    if (isPlanLimitReached(plan, usage)) {
+      return c.json(planLimitError(), 403);
+    }
+  }
   const [room] = await getDb().select().from(rooms).where(eq(rooms.id, payload.roomId)).limit(1);
 
   if (!room) {
@@ -472,6 +577,7 @@ designsRouter.post('/', zValidator('json', createDesignSchema), async (c) => {
       budget: payload.setup.budget.toFixed(2),
       currency: payload.setup.currency,
       styleDirection,
+      ...ownerColumns(owner),
     })
     .returning();
 
@@ -487,17 +593,129 @@ designsRouter.post('/', zValidator('json', createDesignSchema), async (c) => {
       deliveryUrgency: payload.setup.deliveryUrgency,
       existingItemsToKeep,
     },
+    plan: getEffectivePlan(owner),
   });
 
   return c.json({ designId: design.id });
 });
 
+designsRouter.post('/:id/save', async (c) => {
+  const owner = await getRequestOwner(c);
+  const [design] = await getDb().select().from(designs).where(eq(designs.id, c.req.param('id'))).limit(1);
+
+  if (!design) {
+    return c.json({ error: 'Design not found.' }, 404);
+  }
+
+  if (!isSaveableDesign(design)) {
+    return c.json({ error: 'Only ready designs can be saved.' }, 400);
+  }
+
+  if (!canManageDesign(design, owner)) {
+    return c.json({ error: 'You do not have access to save this design.' }, 403);
+  }
+
+  const [savedDesign] = await getDb()
+    .update(designs)
+    .set({
+      ...ownerColumns(owner),
+      savedAt: design.savedAt ?? new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(designs.id, design.id))
+    .returning();
+
+  return c.json({ design: await serializeDesign(savedDesign) });
+});
+
+designsRouter.post('/:id/publish', async (c) => {
+  const owner = await getRequestOwner(c);
+  const [design] = await getDb().select().from(designs).where(eq(designs.id, c.req.param('id'))).limit(1);
+
+  if (!design) {
+    return c.json({ error: 'Design not found.' }, 404);
+  }
+
+  if (!isSaveableDesign(design)) {
+    return c.json({ error: 'Only ready designs can be shared.' }, 400);
+  }
+
+  if (!canManageDesign(design, owner)) {
+    return c.json({ error: 'You do not have access to share this design.' }, 403);
+  }
+
+  if (!getPlanLimits(getEffectivePlan(owner)).canShare) {
+    return c.json(planFeatureError('Sharing', 'plus'), 403);
+  }
+
+  const slug = await ensureSharedSlug(design);
+  const [currentDesign] = await getDb().select().from(designs).where(eq(designs.id, design.id)).limit(1);
+  const [ownedDesign] = await getDb()
+    .update(designs)
+    .set({
+      ...ownerColumns(owner),
+      savedAt: currentDesign.savedAt ?? new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(designs.id, design.id))
+    .returning();
+  const publicDesign = await upsertPublicDesign(ownedDesign, slug);
+
+  return c.json({
+    publicUrl: publicDesignUrl(slug),
+    previewUrl: `${(process.env.BETTER_AUTH_URL || 'http://localhost:8787').replace(/\/+$/g, '')}/explore/${slug}`,
+    design: await serializePublicDesign(ownedDesign, publicDesign),
+  });
+});
+
+designsRouter.post('/:id/unpublish', async (c) => {
+  const owner = await getRequestOwner(c);
+  const [design] = await getDb().select().from(designs).where(eq(designs.id, c.req.param('id'))).limit(1);
+
+  if (!design) {
+    return c.json({ error: 'Design not found.' }, 404);
+  }
+
+  if (!canManageDesign(design, owner)) {
+    return c.json({ error: 'You do not have access to unpublish this design.' }, 403);
+  }
+
+  await getDb().delete(publicDesigns).where(eq(publicDesigns.designId, design.id));
+  const [updatedDesign] = await getDb().select().from(designs).where(eq(designs.id, design.id)).limit(1);
+
+  return c.json({ design: await serializeDesign(updatedDesign) });
+});
+
+designsRouter.get('/public/:slug', async (c) => {
+  const slug = c.req.param('slug');
+  const [row] = await getDb()
+    .select({
+      design: designs,
+      publicDesign: publicDesigns,
+    })
+    .from(publicDesigns)
+    .innerJoin(designs, eq(publicDesigns.designId, designs.id))
+    .where(eq(designs.sharedSlug, slug))
+    .limit(1);
+
+  if (!row) {
+    return c.json({ error: 'Public design not found.' }, 404);
+  }
+
+  return c.json({ design: await serializePublicDesign(row.design, row.publicDesign) });
+});
+
 designsRouter.get('/:id/chat', async (c) => {
   const designId = c.req.param('id');
+  const owner = await getRequestOwner(c);
   const [design] = await getDb().select().from(designs).where(eq(designs.id, designId)).limit(1);
 
   if (!design) {
     return c.json({ error: 'Design not found.' }, 404);
+  }
+
+  if (!canManageDesign(design, owner)) {
+    return c.json({ error: 'You do not have access to this design.' }, 403);
   }
 
   const messages = await getChatMessages(designId);
@@ -507,11 +725,21 @@ designsRouter.get('/:id/chat', async (c) => {
 designsRouter.post('/:id/chat', zValidator('json', chatMessageSchema), async (c) => {
   const designId = c.req.param('id');
   const payload = c.req.valid('json');
+  const owner = await getRequestOwner(c);
   const db = getDb();
   const [design] = await db.select().from(designs).where(eq(designs.id, designId)).limit(1);
 
   if (!design) {
     return c.json({ error: 'Design not found.' }, 404);
+  }
+
+  if (!canManageDesign(design, owner)) {
+    return c.json({ error: 'You do not have access to this design.' }, 403);
+  }
+
+  const planLimits = getPlanLimits(getEffectivePlan(owner));
+  if (planLimits.chatMessagesPerDesign === 0) {
+    return c.json(planFeatureError('Chat refinement', 'plus'), 403);
   }
 
   const parsedPlan = designPlanSchema.safeParse(design.designPlan);
@@ -529,7 +757,15 @@ designsRouter.post('/:id/chat', zValidator('json', chatMessageSchema), async (c)
   }
 
   const existingMessages = await getChatMessages(designId);
-  const items = await getDesignItems(designId);
+  const userMessageCount = existingMessages.filter((message) => message.role === 'user').length;
+  if (planLimits.chatMessagesPerDesign !== null && userMessageCount >= planLimits.chatMessagesPerDesign) {
+    return c.json({
+      code: 'PLAN_CHAT_LIMIT_REACHED',
+      requiredPlan: 'professional',
+      error: 'You have used all five Plus refinements for this design. Upgrade to Professional for unlimited chat.',
+    }, 403);
+  }
+  const items = await getDesignItemsWithProducts(designId);
   const designContext = buildDesignContext({
     design,
     plan: parsedPlan.data,
@@ -608,10 +844,15 @@ designsRouter.post('/:id/chat', zValidator('json', chatMessageSchema), async (c)
 });
 
 designsRouter.get('/:id', async (c) => {
+  const owner = await getRequestOwner(c);
   const [design] = await getDb().select().from(designs).where(eq(designs.id, c.req.param('id'))).limit(1);
 
   if (!design) {
     return c.json({ error: 'Design not found.' }, 404);
+  }
+
+  if (!canManageDesign(design, owner)) {
+    return c.json({ error: 'You do not have access to this design.' }, 403);
   }
 
   return c.json({ design: await serializeDesign(design) });

@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { trackEvent } from '@/lib/analytics';
 import {
   getDesignChat,
   sendDesignChat,
@@ -102,6 +103,7 @@ export function ChatPanel({ designId, open, onOpenChange, onActionApplied }: Cha
     event.preventDefault();
     const message = draft.trim();
     if (!message || sendMutation.isPending) return;
+    trackEvent('chat_message_sent');
 
     setDraft('');
     setError(null);

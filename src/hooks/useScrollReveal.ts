@@ -33,21 +33,25 @@ export function useScrollReveal(
     }
 
     gsap.set(targets, { opacity: 0, y: 40 });
+    const tweens: gsap.core.Tween[] = [];
 
     const batch = ScrollTrigger.batch(targets, {
       start: `top ${(1 - threshold) * 100}%`,
-      onEnter: (batchTargets) =>
-        gsap.to(batchTargets, {
+      onEnter: (batchTargets) => {
+        tweens.push(gsap.to(batchTargets, {
           opacity: 1,
           y: 0,
           duration: 0.8,
           ease: 'power3.out',
           stagger,
-        }),
+          clearProps: 'all',
+        }));
+      },
     });
 
     return () => {
       batch.forEach((trigger) => trigger.kill());
+      tweens.forEach((tween) => tween.kill());
     };
   }, [containerRef, selector, stagger, threshold, reducedMotion]);
 }

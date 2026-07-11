@@ -32,6 +32,68 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const authUser = pgTable('auth_user', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull().unique(),
+  emailVerified: boolean('email_verified').notNull().default(false),
+  image: text('image'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const authSession = pgTable(
+  'auth_session',
+  {
+    id: text('id').primaryKey(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    token: text('token').notNull().unique(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    ipAddress: text('ip_address'),
+    userAgent: text('user_agent'),
+    userId: text('user_id')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'cascade' }),
+  },
+  (table) => [index('auth_session_user_idx').on(table.userId)]
+);
+
+export const authAccount = pgTable(
+  'auth_account',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    providerId: text('provider_id').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => authUser.id, { onDelete: 'cascade' }),
+    accessToken: text('access_token'),
+    refreshToken: text('refresh_token'),
+    idToken: text('id_token'),
+    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
+    scope: text('scope'),
+    password: text('password'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('auth_account_user_idx').on(table.userId)]
+);
+
+export const authVerification = pgTable(
+  'auth_verification',
+  {
+    id: text('id').primaryKey(),
+    identifier: text('identifier').notNull(),
+    value: text('value').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('auth_verification_identifier_idx').on(table.identifier)]
+);
+
 export const styleProfiles = pgTable('style_profiles', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id')
@@ -108,10 +170,18 @@ export const designs = pgTable(
     designPlan: jsonb('design_plan').$type<Record<string, unknown>>(),
     renderUrl: text('render_url'),
     sharedSlug: varchar('shared_slug', { length: 32 }).unique(),
+    ownerSessionId: text('owner_session_id'),
+    ownerAuthUserId: text('owner_auth_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    savedAt: timestamp('saved_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('designs_room_idx').on(table.roomId)]
+  (table) => [
+    index('designs_room_idx').on(table.roomId),
+    index('designs_owner_session_idx').on(table.ownerSessionId),
+    index('designs_owner_auth_user_idx').on(table.ownerAuthUserId),
+    index('designs_saved_at_idx').on(table.savedAt),
+  ]
 );
 
 export const designItems = pgTable(
@@ -168,10 +238,21 @@ export const productClicks = pgTable('product_clicks', {
 export const purchaseOutcomes = pgTable('purchase_outcomes', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  productClickId: uuid('product_click_id')
+    .unique()
+    .references(() => productClicks.id, { onDelete: 'cascade' }),
+  designId: uuid('design_id').references(() => designs.id, { onDelete: 'cascade' }),
+  ownerSessionId: text('owner_session_id'),
+  ownerAuthUserId: text('owner_auth_user_id').references(() => authUser.id, { onDelete: 'set null' }),
   productId: uuid('product_id')
     .notNull()
     .references(() => products.id, { onDelete: 'cascade' }),
+  purchased: boolean('purchased'),
   satisfied: boolean('satisfied'),
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index('purchase_outcomes_design_idx').on(table.designId),
+  index('purchase_outcomes_owner_session_idx').on(table.ownerSessionId),
+  index('purchase_outcomes_owner_auth_user_idx').on(table.ownerAuthUserId),
+]);

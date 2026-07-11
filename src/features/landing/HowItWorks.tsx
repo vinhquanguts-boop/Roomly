@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { CloudUpload, ShoppingCart, Sparkles, WalletCards } from 'lucide-react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import { Divider } from '@/components/Divider';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 
 gsap.registerPlugin(ScrollTrigger);
@@ -98,30 +99,55 @@ export function HowItWorks() {
   }, [reduced]);
 
   return (
-    <section id="how-it-works" className="bg-bg-elevated px-5 py-16 md:px-8 md:py-20">
+    <section id="how-it-works" className="bg-bg-elevated px-5 py-20 md:px-8 md:py-28">
       <div className="mx-auto max-w-[1120px] text-center">
         <div data-reveal>
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-accent">How it works</p>
-          <h2 className="mt-3 font-display text-[32px] font-semibold leading-tight text-text-primary md:text-[38px]">
+          <p className="text-overline text-accent">How it works</p>
+          <Divider className="my-3" />
+          <h2 className="font-display text-display font-semibold text-text-primary">
             Four simple steps to your dream room
           </h2>
         </div>
 
-        <div ref={containerRef} className="relative mt-8 grid grid-cols-2 gap-8 md:grid-cols-4 md:gap-6">
+        {/* Desktop: horizontal timeline */}
+        <div ref={containerRef} className="relative mt-10 hidden grid-cols-4 gap-6 md:grid">
           <div
             ref={lineRef}
-            className="pointer-events-none absolute left-[13%] right-[13%] top-[42px] hidden h-px bg-roomly-secondary md:block"
+            className="pointer-events-none absolute left-[13%] right-[13%] top-[42px] h-px bg-roomly-secondary"
             aria-hidden="true"
           />
           {steps.map((step) => {
             const Icon = step.icon;
             return (
               <div key={step.title} className="relative flex flex-col items-center">
-                <span className="hiw-circle relative z-10 flex size-[70px] items-center justify-center rounded-full border border-roomly-secondary bg-bg-elevated text-accent shadow-[0_4px_18px_rgba(26,22,20,0.08)] md:size-[74px]">
+                <span className="hiw-circle relative z-10 flex size-[74px] items-center justify-center rounded-full border border-roomly-secondary bg-bg-elevated text-accent shadow-[0_4px_18px_rgba(26,22,20,0.08)]">
                   <Icon className="size-8 stroke-[1.8]" aria-hidden="true" />
                 </span>
                 <h3 className="hiw-text mt-4 text-[15px] font-bold text-text-primary">{step.title}</h3>
                 <p className="hiw-text mt-2 max-w-[190px] text-sm leading-5 text-text-secondary">{step.description}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Mobile: vertical timeline */}
+        <div className="relative mt-10 flex flex-col gap-0 md:hidden">
+          {/* Vertical connector line */}
+          <div
+            className="pointer-events-none absolute bottom-0 left-[35px] top-0 w-px bg-roomly-secondary"
+            aria-hidden="true"
+          />
+          {steps.map((step, i) => {
+            const Icon = step.icon;
+            return (
+              <div key={step.title} className={`relative flex items-start gap-5 text-left ${i < steps.length - 1 ? 'pb-8' : ''}`}>
+                <span className="relative z-10 flex size-[70px] shrink-0 items-center justify-center rounded-full border border-roomly-secondary bg-bg-elevated text-accent shadow-[0_4px_18px_rgba(26,22,20,0.08)]">
+                  <Icon className="size-7 stroke-[1.8]" aria-hidden="true" />
+                </span>
+                <div className="pt-3">
+                  <h3 className="text-[15px] font-bold text-text-primary">{step.title}</h3>
+                  <p className="mt-1 text-sm leading-5 text-text-secondary">{step.description}</p>
+                </div>
               </div>
             );
           })}

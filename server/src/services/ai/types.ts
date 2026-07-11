@@ -165,10 +165,53 @@ export type SegmentInput = {
   targetLabel: string;
 };
 
+// --- Pre-design chat types ---------------------------------------------------
+
+export type PreDesignChatInput = {
+  history: Array<{ role: 'user' | 'assistant'; content: string }>;
+  userMessage: string;
+};
+
+export const designBriefSchema = z.object({
+  roomType: z.enum([
+    'bedroom',
+    'living_room',
+    'kitchen',
+    'bathroom',
+    'office',
+    'dining',
+    'entryway',
+    'other',
+  ]),
+  budget: z.number().positive(),
+  currency: z.enum(['AUD', 'USD', 'NZD']),
+  stylePreference: z.string(),
+  deliveryUrgency: z.enum(['urgent', 'normal', 'flexible']),
+  userNotes: z.string(),
+});
+export type DesignBrief = z.infer<typeof designBriefSchema>;
+
+export const preDesignChatOutputSchema = z.discriminatedUnion('readyToDesign', [
+  z.object({
+    reply: z.string(),
+    readyToDesign: z.literal(false),
+    brief: z.null().default(null),
+  }),
+  z.object({
+    reply: z.string(),
+    readyToDesign: z.literal(true),
+    brief: designBriefSchema,
+  }),
+]);
+export type PreDesignChatOutput = z.infer<typeof preDesignChatOutputSchema>;
+
+// --- Provider interface ------------------------------------------------------
+
 export interface AIProvider {
   analyzeRoom(imageUrl: string): Promise<RoomAnalysis>;
   generateDesignPlan(input: DesignPlanInput): Promise<DesignPlan>;
   chatRefine(input: ChatInput): Promise<ChatToolCall>;
+  preDesignChat(input: PreDesignChatInput): Promise<PreDesignChatOutput>;
   renderImage(input: RenderInput): Promise<{ url: string }>;
   segmentRegion(input: SegmentInput): Promise<{ maskUrl: string }>;
   embedImage(imageUrl: string): Promise<number[]>;

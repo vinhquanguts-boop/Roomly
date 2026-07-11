@@ -1,5 +1,6 @@
 import postgres from 'postgres';
 import { loadEnv } from '../lib/env.js';
+import { calculateTrustRisk } from '../services/products/trust.js';
 
 loadEnv();
 
@@ -28,6 +29,9 @@ type ProductSeed = {
   category: string;
   qualityRiskScore: string;
   deliveryEstimate: string;
+  reviewCount: number;
+  positivePct: string;
+  negativeFlags: string[];
 };
 
 const RETAILERS: Retailer[] = ['Kmart', 'IKEA', 'Amazon', 'AliExpress', 'Taobao'];
@@ -178,9 +182,37 @@ function ratingFor(index: number): string {
   return (3.8 + (index % 12) / 10).toFixed(2);
 }
 
-function riskFor(retailer: Retailer, index: number): string {
-  const base = retailer === 'AliExpress' || retailer === 'Taobao' ? 0.32 : 0.12;
-  return Math.min(base + (index % 6) * 0.025, 0.62).toFixed(3);
+function hasLimitedSignals(retailer: Retailer, index: number): boolean {
+  return (retailer === 'AliExpress' || retailer === 'Taobao') && index % 3 === 0;
+}
+
+function soldCountFor(retailer: Retailer, index: number): number {
+  if (hasLimitedSignals(retailer, index)) return 8 + (index % 28);
+  return 80 + ((index * 37) % 2400);
+}
+
+function reviewCountFor(retailer: Retailer, index: number): number {
+  if (hasLimitedSignals(retailer, index)) return 2 + (index % 18);
+  return 45 + ((index * 53) % 3600);
+}
+
+function positivePctFor(retailer: Retailer, index: number): number {
+  if (hasLimitedSignals(retailer, index)) return 54 + (index % 10);
+  const base = retailer === 'AliExpress' || retailer === 'Taobao' ? 78 : 84;
+  return Math.min(base + (index % 14), 96);
+}
+
+function negativeFlagsFor(category: string, retailer: Retailer, index: number): string[] {
+  const flags = category === 'rug' || category === 'throw' || category === 'bedding'
+    ? ['colour variance', 'fabric feel']
+    : category === 'desk' || category === 'chair' || category === 'shelf'
+      ? ['assembly time', 'size expectations']
+      : ['size expectations', 'finish variation'];
+
+  if ((retailer === 'AliExpress' || retailer === 'Taobao') && index % 2 === 0) {
+    flags.push('delivery time');
+  }
+  return flags;
 }
 
 function productUrl(retailer: Retailer, title: string): string {
@@ -200,6 +232,9 @@ function buildSeedProducts(): ProductSeed[] {
       RETAILERS.forEach((retailer, retailerIndex) => {
         const title = `${name} - ${retailer}`;
         const sequence = categoryIndex * 100 + nameIndex * 10 + retailerIndex;
+        const soldCount = soldCountFor(retailer, sequence);
+        const reviewCount = reviewCountFor(retailer, sequence);
+        const positivePct = positivePctFor(retailer, sequence);
         seeds.push({
           retailer,
           externalId: `seed-${categorySeed.category}-${slug(name)}-${slug(retailer)}`,
@@ -210,11 +245,19 @@ function buildSeedProducts(): ProductSeed[] {
           price: priceFor(categorySeed, categoryIndex, nameIndex, retailerIndex).toFixed(2),
           currency: 'AUD',
           inStock: true,
-          soldCount: 80 + ((sequence * 37) % 2400),
+          soldCount,
           rating: ratingFor(sequence),
           category: categorySeed.category,
-          qualityRiskScore: riskFor(retailer, sequence),
+          qualityRiskScore: (calculateTrustRisk({
+            category: categorySeed.category,
+            soldCount,
+            reviewCount,
+            positivePct,
+          }) ?? 0.5).toFixed(3),
           deliveryEstimate: DELIVERY_BY_RETAILER[retailer],
+          reviewCount,
+          positivePct: positivePct.toFixed(2),
+          negativeFlags: negativeFlagsFor(categorySeed.category, retailer, sequence),
         });
       });
     });
@@ -235,7 +278,7 @@ try {
 
   await sql.begin(async (tx) => {
     for (const product of seedProducts) {
-      await tx`
+      const [stored] = await tx<{ id: string }[]>`
         insert into products (
           retailer,
           external_id,
@@ -284,6 +327,30 @@ try {
           category = excluded.category,
           quality_risk_score = excluded.quality_risk_score,
           delivery_estimate = excluded.delivery_estimate,
+          updated_at = now()
+        returning id
+      `;
+
+      await tx`
+        insert into product_reviews (
+          product_id,
+          review_count,
+          positive_pct,
+          negative_flags,
+          updated_at
+        )
+        values (
+          ${stored.id},
+          ${product.reviewCount},
+          ${product.positivePct},
+          ${JSON.stringify(product.negativeFlags)}::jsonb,
+          now()
+        )
+        on conflict (product_id)
+        do update set
+          review_count = excluded.review_count,
+          positive_pct = excluded.positive_pct,
+          negative_flags = excluded.negative_flags,
           updated_at = now()
       `;
     }

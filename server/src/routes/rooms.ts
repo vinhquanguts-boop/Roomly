@@ -18,6 +18,15 @@ import {
 } from '../lib/storage.js';
 import { getAI } from '../services/ai/index.js';
 import { roomAnalysisSchema } from '../services/ai/types.js';
+import {
+  getDesignUsage,
+  getEffectivePlan,
+  isAuthenticatedOwner,
+  isPlanLimitReached,
+  planLimitError,
+} from '../lib/entitlements.js';
+import { getRequestOwner } from '../lib/request-context.js';
+import { requestIp, takeRateLimit } from '../lib/rate-limit.js';
 
 const uploadRequestSchema = z.object({
   contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
@@ -27,6 +36,19 @@ export const roomsRouter = new Hono();
 
 roomsRouter.post('/upload', zValidator('json', uploadRequestSchema), async (c) => {
   const { contentType } = c.req.valid('json');
+  const owner = await getRequestOwner(c);
+  const ipLimit = takeRateLimit(`upload:${requestIp(c.req.header('x-forwarded-for'))}`, 20, 60 * 60 * 1000);
+  if (!ipLimit.allowed) {
+    c.header('Retry-After', String(ipLimit.retryAfterSeconds));
+    return c.json({ code: 'UPLOAD_RATE_LIMITED', error: 'Too many uploads. Please try again later.' }, 429);
+  }
+  if (isAuthenticatedOwner(owner)) {
+    const plan = getEffectivePlan(owner);
+    const usage = await getDesignUsage(owner);
+    if (isPlanLimitReached(plan, usage)) {
+      return c.json(planLimitError(), 403);
+    }
+  }
   const target = await createUploadTarget(contentType);
 
   const [room] = await getDb()
@@ -102,4 +124,3 @@ roomsRouter.post('/:id/analyze', async (c) => {
 
   return c.json({ analysis, cached: false });
 });
-
