@@ -48,7 +48,7 @@ async function ollamaChat(model: string, messages: ChatCompletionMessage[]): Pro
   });
 
   if (!response.ok) {
-    throw new Error(`Ollama chat failed: ${response.status} ${await response.text()}`);
+    throw new Error(`Ollama chat failed: ${response.status}`);
   }
 
   const data = (await response.json()) as {

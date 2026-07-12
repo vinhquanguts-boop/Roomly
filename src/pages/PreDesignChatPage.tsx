@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { ArrowLeft, ArrowRight, Loader2, Send } from 'lucide-react';
 import gsap from 'gsap';
+import { toast } from 'sonner';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
@@ -42,6 +43,7 @@ export function PreDesignChatPage() {
       .then(({ sessionId: sid }) => setSessionId(sid))
       .catch(() => {
         setError('Chat is unavailable right now. You can still continue to the designer.');
+        toast.info('Chat is running in offline mode — skip ahead to the designer.');
       })
       .finally(() => setIsSessionLoading(false));
   }, []);
@@ -91,7 +93,8 @@ export function PreDesignChatPage() {
         }
       }
     } catch {
-      setError('Could not reach the AI. Try again or skip to the designer.');
+      setError('Could not reach the AI. Your message was not sent — try again or skip to the designer.');
+      toast.error('Could not reach the AI. Your message was not sent.');
     } finally {
       setIsLoading(false);
       inputRef.current?.focus();
@@ -193,8 +196,13 @@ export function PreDesignChatPage() {
             onKeyDown={handleKeyDown}
             placeholder={isSessionLoading ? 'Connecting to Roomly...' : 'Type your message (Enter to send)'}
             disabled={isLoading || isSessionLoading || !sessionId || readyToDesign}
+            aria-label="Type your message"
+            aria-describedby="chat-hint"
             className="flex-1 resize-none rounded-xl border border-border-subtle bg-bg-base px-4 py-2.5 text-sm leading-6 outline-none focus:border-accent disabled:opacity-50"
           />
+          <p id="chat-hint" className="sr-only">
+            Press Enter to send, Shift+Enter for a new line.
+          </p>
           <Button
             type="button"
             size="icon"

@@ -5,10 +5,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { ArrowLeft, CheckCircle2, Clock3, MessageSquare, Palette, Ruler, SunMedium } from 'lucide-react';
 import gsap from 'gsap';
+import { toast } from 'sonner';
 import { z } from 'zod';
 import { LightCard } from '@/components/LightCard';
+import { RetryBlock } from '@/components/RetryBlock';
 import { StepProgress } from '@/components/StepProgress';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { usePageEntrance } from '@/hooks/usePageEntrance';
 import { useStaggerReveal } from '@/hooks/useStaggerReveal';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
@@ -151,6 +154,7 @@ export function SetupPage() {
   const budgetFieldRef = useRef<HTMLDivElement>(null);
   const currencyIndicatorRef = useRef<HTMLDivElement>(null);
   const analysisTrackedRef = useRef(false);
+  const analysisErrorToastRef = useRef(false);
   const reduced = useReducedMotion();
   const chatBrief = typeof window !== 'undefined' ? readChatBrief() : null;
   const hasChatRoomType = Boolean(chatBrief?.roomType);
@@ -192,6 +196,18 @@ export function SetupPage() {
       }
     }
   }, [analysisQuery.data?.analysis, form, hasChatRoomType]);
+
+  useEffect(() => {
+    if (analysisQuery.isError && !analysisErrorToastRef.current) {
+      analysisErrorToastRef.current = true;
+      toast.error(
+        analysisQuery.error instanceof Error ? analysisQuery.error.message : 'Room analysis could not finish.'
+      );
+    }
+    if (!analysisQuery.isError) {
+      analysisErrorToastRef.current = false;
+    }
+  }, [analysisQuery.isError, analysisQuery.error]);
 
   const currencyValue = useWatch({ control: form.control, name: 'currency', defaultValue: 'AUD' });
 
@@ -275,50 +291,47 @@ export function SetupPage() {
               Local room analysis can take 5-30 seconds. Once it is ready, confirm your budget and preferences for the next phase.
             </p>
 
-            <div className="mt-8">
+            <div className="mt-8" aria-live="polite" aria-busy={analysisQuery.isPending}>
               {analysisQuery.isPending ? (
                 <div className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     {[0, 1, 2, 3].map((i) => (
                       <LightCard key={i} className="p-5">
                         <div className="flex items-center gap-3">
-                          <div className="size-5 animate-pulse rounded-full bg-secondary-muted" />
-                          <div className="h-4 w-24 animate-pulse rounded bg-secondary-muted" />
+                          <Skeleton className="size-5 rounded-full" />
+                          <Skeleton className="h-4 w-24" />
                         </div>
-                        <div className="mt-4 h-7 w-32 animate-pulse rounded bg-secondary-muted" />
+                        <Skeleton className="mt-4 h-7 w-32" />
                         <div className="mt-2 space-y-1.5">
-                          <div className="h-3 w-full animate-pulse rounded bg-secondary-muted" />
-                          <div className="h-3 w-3/4 animate-pulse rounded bg-secondary-muted" />
+                          <Skeleton className="h-3 w-full" />
+                          <Skeleton className="h-3 w-3/4" />
                         </div>
                       </LightCard>
                     ))}
                   </div>
                   <LightCard className="p-5">
-                    <div className="h-4 w-36 animate-pulse rounded bg-secondary-muted" />
+                    <Skeleton className="h-4 w-36" />
                     <div className="mt-4 flex flex-wrap gap-2">
                       {[0, 1, 2, 3].map((i) => (
-                        <div key={i} className="h-7 w-20 animate-pulse rounded-full bg-secondary-muted" />
+                        <Skeleton key={i} className="h-7 w-20 rounded-full" />
                       ))}
                     </div>
                     <div className="mt-4 space-y-1.5">
-                      <div className="h-3 w-full animate-pulse rounded bg-secondary-muted" />
-                      <div className="h-3 w-5/6 animate-pulse rounded bg-secondary-muted" />
+                      <Skeleton className="h-3 w-full" />
+                      <Skeleton className="h-3 w-5/6" />
                     </div>
                   </LightCard>
                   <p className="text-center text-sm font-semibold text-text-secondary">Analyzing your room…</p>
                 </div>
               ) : analysisQuery.isError ? (
-                <LightCard className="p-6">
-                  <h2 className="text-xl font-bold">Analysis could not finish</h2>
-                  <p className="mt-3 text-sm leading-6 text-text-secondary">
-                    {analysisQuery.error instanceof Error
+                <RetryBlock
+                  message={
+                    analysisQuery.error instanceof Error
                       ? analysisQuery.error.message
-                      : 'Check that the backend, Postgres, and Ollama are running.'}
-                  </p>
-                  <Button className="mt-5" onClick={() => analysisQuery.refetch()}>
-                    Try again
-                  </Button>
-                </LightCard>
+                      : 'Analysis could not finish. Check that the backend, Postgres, and Ollama are running.'
+                  }
+                  onRetry={() => analysisQuery.refetch()}
+                />
               ) : (
                 <AnalysisSummary analysis={analysisQuery.data.analysis} />
               )}
@@ -342,6 +355,8 @@ export function SetupPage() {
                   min="50"
                   max="5000"
                   step="10"
+                  aria-invalid={Boolean(form.formState.errors.budget)}
+                  aria-describedby={form.formState.errors.budget ? 'budget-error' : undefined}
                   className="mt-2 h-11 w-full rounded-md border border-border-subtle bg-bg-elevated px-3 outline-none focus:border-accent"
                   {...budgetRegistration}
                   onBlur={(event) => {
@@ -350,7 +365,7 @@ export function SetupPage() {
                   }}
                 />
                 {form.formState.errors.budget ? (
-                  <p className="mt-2 text-sm font-semibold text-destructive">{form.formState.errors.budget.message}</p>
+                  <p id="budget-error" className="mt-2 text-sm font-semibold text-destructive">{form.formState.errors.budget.message}</p>
                 ) : null}
               </div>
 
@@ -418,12 +433,14 @@ export function SetupPage() {
                 </label>
                 <input
                   id="stylePreference"
+                  aria-invalid={Boolean(form.formState.errors.stylePreference)}
+                  aria-describedby={form.formState.errors.stylePreference ? 'stylePreference-error' : undefined}
                   className="mt-2 h-11 w-full rounded-md border border-border-subtle bg-bg-elevated px-3 outline-none focus:border-accent"
                   placeholder="warm minimalist"
                   {...form.register('stylePreference')}
                 />
                 {form.formState.errors.stylePreference ? (
-                  <p className="mt-2 text-sm font-semibold text-destructive">
+                  <p id="stylePreference-error" className="mt-2 text-sm font-semibold text-destructive">
                     {form.formState.errors.stylePreference.message}
                   </p>
                 ) : null}

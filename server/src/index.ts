@@ -3,6 +3,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { auth } from './lib/auth.js';
 import { loadEnv } from './lib/env.js';
+import { assertLocalOnlyConfiguration } from './lib/local-mode.js';
+import { logError, logInfo, safeErrorCode } from './lib/logging.js';
 import { captureServerError, initServerMonitoring } from './lib/monitoring.js';
 import { getOrCreateRoomlySessionId } from './lib/request-context.js';
 import { readLocalFile } from './lib/storage.js';
@@ -20,6 +22,7 @@ import { userRouter } from './routes/user.js';
 import { chatRouter } from './routes/chat.js';
 
 loadEnv();
+assertLocalOnlyConfiguration();
 initServerMonitoring();
 
 const app = new Hono();
@@ -47,8 +50,28 @@ app.use(
 );
 
 app.use('*', async (c, next) => {
-  getOrCreateRoomlySessionId(c);
+  // Better Auth owns its own session cookie. Setting Roomly's anonymous cookie on
+  // auth routes overwrites Better Auth's Set-Cookie response in Hono.
+  if (!c.req.path.startsWith('/api/auth')) {
+    getOrCreateRoomlySessionId(c);
+  }
   await next();
+});
+
+app.use('*', async (c, next) => {
+  const requestId = crypto.randomUUID();
+  const startedAt = Date.now();
+  c.header('X-Request-ID', requestId);
+
+  await next();
+
+  logInfo('http_request', {
+    request_id: requestId,
+    method: c.req.method,
+    path: c.req.path,
+    status: c.res.status,
+    duration_ms: Date.now() - startedAt,
+  });
 });
 
 app.route('/api/auth', authMetaRouter);
@@ -81,12 +104,17 @@ app.get('/storage/:key{.*}', async (c) => {
 
 app.onError((error, c) => {
   captureServerError(error, { method: c.req.method, path: c.req.path });
-  console.error(error);
+  logError('http_request_failed', {
+    method: c.req.method,
+    path: c.req.path,
+    error_name: error instanceof Error ? error.name : 'UnknownError',
+    error_code: safeErrorCode(error),
+  });
   return c.json({ error: 'Something went wrong. Please try again.' }, 500);
 });
 
 const port = Number(process.env.PORT ?? 8787);
 
 serve({ fetch: app.fetch, port }, (info) => {
-  console.info(`Roomly API listening on http://localhost:${info.port}`);
+  logInfo('server_started', { port: info.port, url: `http://localhost:${info.port}` });
 });

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Navigation } from '@/components/Navigation';
 import { LightCard } from '@/components/LightCard';
 import { LoadingButton } from '@/components/LoadingButton';
@@ -28,7 +29,6 @@ export function AccountPage() {
   const [name, setName] = useState(user?.name ?? '');
   const [editingName, setEditingName] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const deleteDialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -42,16 +42,6 @@ export function AccountPage() {
     enabled: Boolean(user),
   });
 
-  useEffect(() => {
-    if (!deleteDialogOpen) return;
-    deleteDialogRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setDeleteDialogOpen(false);
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [deleteDialogOpen]);
-
   const updateNameMutation = useMutation({
     mutationFn: (newName: string) => authClient.updateUser({ name: newName }),
     onSuccess: async () => {
@@ -64,7 +54,10 @@ export function AccountPage() {
 
   const deleteAccountMutation = useMutation({
     mutationFn: () => authClient.deleteUser(),
-    onSuccess: () => toast.success('Account deletion requested.'),
+    onSuccess: () => {
+      setDeleteDialogOpen(false);
+      toast.success('Account deletion requested.');
+    },
     onError: () => toast.error('Could not delete account. Please try again.'),
   });
 
@@ -242,35 +235,16 @@ export function AccountPage() {
           </LightCard>
         </div>
       </main>
-      {deleteDialogOpen ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-5" onMouseDown={() => setDeleteDialogOpen(false)}>
-          <div
-            ref={deleteDialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="delete-account-title"
-            tabIndex={-1}
-            className="w-full max-w-md rounded-xl border border-border-subtle bg-bg-elevated p-6 shadow-2xl"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <h2 id="delete-account-title" className="text-xl font-bold">Delete your account?</h2>
-            <p className="mt-3 text-sm leading-6 text-text-secondary">
-              This permanently deletes your Roomly account. Your saved designs will no longer be accessible. This action cannot be undone.
-            </p>
-            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-              <LoadingButton
-                variant="destructive"
-                onClick={() => deleteAccountMutation.mutate()}
-                loading={deleteAccountMutation.isPending}
-                loadingText="Deleting..."
-              >
-                Delete account
-              </LoadingButton>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete your account?"
+        description="This permanently deletes your Roomly account. Your saved designs will no longer be accessible. This action cannot be undone."
+        confirmLabel="Delete account"
+        confirmVariant="destructive"
+        loading={deleteAccountMutation.isPending}
+        onConfirm={() => deleteAccountMutation.mutate()}
+      />
     </>
   );
 }

@@ -27,6 +27,7 @@ import {
 } from '../lib/entitlements.js';
 import { getRequestOwner } from '../lib/request-context.js';
 import { requestIp, takeRateLimit } from '../lib/rate-limit.js';
+import { runTrackedAiOperation } from '../lib/ai-usage.js';
 
 const uploadRequestSchema = z.object({
   contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
@@ -37,7 +38,7 @@ export const roomsRouter = new Hono();
 roomsRouter.post('/upload', zValidator('json', uploadRequestSchema), async (c) => {
   const { contentType } = c.req.valid('json');
   const owner = await getRequestOwner(c);
-  const ipLimit = takeRateLimit(`upload:${requestIp(c.req.header('x-forwarded-for'))}`, 20, 60 * 60 * 1000);
+  const ipLimit = await takeRateLimit(`upload:${requestIp(c.req.header('x-forwarded-for'))}`, 20, 60 * 60 * 1000);
   if (!ipLimit.allowed) {
     c.header('Retry-After', String(ipLimit.retryAfterSeconds));
     return c.json({ code: 'UPLOAD_RATE_LIMITED', error: 'Too many uploads. Please try again later.' }, 429);
@@ -108,6 +109,7 @@ roomsRouter.post('/storage-upload/:key{.*}', async (c) => {
 
 roomsRouter.post('/:id/analyze', async (c) => {
   const id = c.req.param('id');
+  const owner = await getRequestOwner(c);
   const [room] = await getDb().select().from(rooms).where(eq(rooms.id, id)).limit(1);
 
   if (!room) {
@@ -119,7 +121,10 @@ roomsRouter.post('/:id/analyze', async (c) => {
     return c.json({ analysis: cachedAnalysis.data, cached: true });
   }
 
-  const analysis = await getAI().analyzeRoom(room.storageUrl);
+  const analysis = await runTrackedAiOperation(
+    { owner, operation: 'room_analysis', roomId: id },
+    () => getAI().analyzeRoom(room.storageUrl)
+  );
   await getDb().update(rooms).set({ vlmAnalysis: analysis }).where(eq(rooms.id, id));
 
   return c.json({ analysis, cached: false });

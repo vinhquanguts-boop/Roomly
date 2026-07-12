@@ -225,6 +225,31 @@ export const chatMessages = pgTable(
   (table) => [index('chat_messages_design_idx').on(table.designId)]
 );
 
+export const aiUsage = pgTable(
+  'ai_usage',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerSessionId: text('owner_session_id'),
+    ownerAuthUserId: text('owner_auth_user_id').references(() => authUser.id, { onDelete: 'set null' }),
+    roomId: uuid('room_id').references(() => rooms.id, { onDelete: 'set null' }),
+    designId: uuid('design_id').references(() => designs.id, { onDelete: 'set null' }),
+    operation: varchar('operation', { length: 32 }).notNull(),
+    provider: varchar('provider', { length: 32 }).notNull(),
+    model: text('model').notNull(),
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    durationMs: integer('duration_ms').notNull(),
+    estimatedCostUsd: numeric('estimated_cost_usd', { precision: 10, scale: 4 }).notNull().default('0'),
+    outcome: varchar('outcome', { length: 16 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('ai_usage_owner_session_created_idx').on(table.ownerSessionId, table.createdAt),
+    index('ai_usage_owner_auth_created_idx').on(table.ownerAuthUserId, table.createdAt),
+    index('ai_usage_operation_created_idx').on(table.operation, table.createdAt),
+  ]
+);
+
 export const productClicks = pgTable('product_clicks', {
   id: uuid('id').primaryKey().defaultRandom(),
   designId: uuid('design_id').references(() => designs.id, { onDelete: 'set null' }),

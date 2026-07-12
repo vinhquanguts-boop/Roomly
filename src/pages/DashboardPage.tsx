@@ -6,6 +6,8 @@ import gsap from 'gsap';
 import { LightCard } from '@/components/LightCard';
 import { Navigation } from '@/components/Navigation';
 import { PlanBadge } from '@/components/PlanBadge';
+import { RetryBlock } from '@/components/RetryBlock';
+import { SkeletonDesignCard } from '@/components/SkeletonDesignCard';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
@@ -227,25 +229,37 @@ export function DashboardPage() {
             <ProductFollowUpCard followUp={followUp} onLater={() => setDeferredFollowUpId(followUp.clickId)} />
           ) : null}
 
-          {designsQuery.isPending ? (
-            <LightCard className="mt-8 p-6 text-sm font-semibold text-text-secondary">Loading saved designs...</LightCard>
-          ) : designs.length === 0 ? (
-            <LightCard className="mt-8 p-8 text-center">
-              <h2 className="font-display text-[32px] font-semibold">No saved designs yet</h2>
-              <p className="mx-auto mt-3 max-w-[460px] text-sm leading-6 text-text-secondary">
-                Finish a design result, then tap Save to make it appear here.
-              </p>
-              <Button asChild className="mt-6 h-11 rounded-md">
-                <Link to="/design/upload">Start a room design</Link>
-              </Button>
-            </LightCard>
-          ) : (
-            <div ref={gridRef} className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {designs.map((design) => (
-                <DesignCard key={design.id} design={design} />
-              ))}
-            </div>
-          )}
+          <div aria-live="polite" aria-busy={designsQuery.isPending}>
+            {designsQuery.isPending ? (
+              <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3" aria-label="Loading designs">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonDesignCard key={i} />
+                ))}
+              </div>
+            ) : designsQuery.isError ? (
+              <RetryBlock
+                message="Could not load your designs."
+                onRetry={() => designsQuery.refetch()}
+                className="mt-8"
+              />
+            ) : designs.length === 0 ? (
+              <LightCard className="mt-8 p-8 text-center">
+                <h2 className="font-display text-[32px] font-semibold">No saved designs yet</h2>
+                <p className="mx-auto mt-3 max-w-[460px] text-sm leading-6 text-text-secondary">
+                  Finish a design result, then tap Save to make it appear here.
+                </p>
+                <Button asChild className="mt-6 h-11 rounded-md">
+                  <Link to="/design/upload">Start a room design</Link>
+                </Button>
+              </LightCard>
+            ) : (
+              <div ref={gridRef} className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {designs.map((design) => (
+                  <DesignCard key={design.id} design={design} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </>

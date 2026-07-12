@@ -10,17 +10,22 @@ import {
   Palette,
   ReceiptText,
   Share2,
+  ShoppingBag,
   Sparkles,
   Star,
   Truck,
 } from 'lucide-react';
 import gsap from 'gsap';
 import { toast } from 'sonner';
+import { EmptyState } from '@/components/EmptyState';
 import { LightCard } from '@/components/LightCard';
+import { LoadingButton } from '@/components/LoadingButton';
 import { PlanGate } from '@/components/PlanGate';
+import { SkeletonProductCard } from '@/components/SkeletonProductCard';
 import { StepProgress } from '@/components/StepProgress';
 import { TrustBadge } from '@/components/TrustBadge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ChatPanel } from '@/features/chat';
 import { useCountUp } from '@/hooks/useCountUp';
 import { usePlan } from '@/hooks/usePlan';
@@ -285,8 +290,27 @@ export function ResultPage() {
     return (
       <>
         <StepProgress current={5} />
-        <main className="flex min-h-dvh items-center justify-center bg-bg-base px-5 text-text-primary">
-          <p className="text-sm font-semibold text-text-secondary">Loading design...</p>
+        <main className="min-h-dvh bg-bg-base text-text-primary" aria-busy="true" aria-label="Loading design">
+          <div className="mx-auto max-w-[1120px] px-5 py-8 md:px-10">
+            <Skeleton className="mb-6 h-10 w-40 rounded-md bg-secondary-muted" />
+            <div className="mb-4 overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated lg:grid lg:grid-cols-[1fr_0.82fr]">
+              <div className="space-y-4 p-7 md:p-9">
+                <Skeleton className="h-3 w-28 bg-secondary-muted" />
+                <Skeleton className="h-9 w-3/4 bg-secondary-muted" />
+                <Skeleton className="h-4 w-full bg-secondary-muted" />
+                <Skeleton className="h-4 w-2/3 bg-secondary-muted" />
+              </div>
+              <Skeleton className="min-h-[240px] rounded-none bg-secondary-muted" />
+            </div>
+            <div className="grid gap-5 lg:grid-cols-[0.88fr_1.12fr]">
+              <Skeleton className="h-64 rounded-lg bg-secondary-muted" />
+              <div className="grid grid-cols-2 gap-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonProductCard key={i} />
+                ))}
+              </div>
+            </div>
+          </div>
         </main>
       </>
     );
@@ -336,24 +360,26 @@ export function ResultPage() {
               </Link>
             </Button>
             <div className="hidden items-center gap-2 md:flex">
-              <Button
+              <LoadingButton
                 variant="outline"
                 className="h-10 rounded-md"
                 onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending}
+                loading={saveMutation.isPending}
+                loadingText="Saving..."
               >
                 <Bookmark className="size-4" aria-hidden="true" />
                 {design.savedAt ? 'Saved' : 'Save'}
-              </Button>
-              <Button
+              </LoadingButton>
+              <LoadingButton
                 variant="outline"
                 className="h-10 rounded-md"
                 onClick={handleShareClick}
-                disabled={shareMutation.isPending}
+                loading={shareMutation.isPending}
+                loadingText="Sharing..."
               >
                 <Share2 className="size-4" aria-hidden="true" />
                 Share
-              </Button>
+              </LoadingButton>
               <Button className="h-10 rounded-md" onClick={handleRefineClick}>
                 <MessageCircle className="size-4" aria-hidden="true" />
                 Refine
@@ -568,25 +594,28 @@ export function ResultPage() {
               </LightCard>
 
               {/* Product grid — 2 columns */}
-              {shoppingItems.length > 0 ? (
-                <div className="grid grid-cols-2 gap-3">
-                  {shoppingItems.map((item) => (
-                    <ShoppingCard
-                      key={item.designItemId}
-                      designId={design.id}
-                      item={item}
-                      currency={design.currency}
-                      highlighted={item.position === highlightedPosition}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <LightCard className="p-5 text-center">
-                  <p className="text-sm text-text-secondary">
-                    Shopping list is being prepared. Your design plan is ready above.
-                  </p>
-                </LightCard>
-              )}
+              <div aria-live="polite">
+                {shoppingItems.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {shoppingItems.map((item) => (
+                      <ShoppingCard
+                        key={item.designItemId}
+                        designId={design.id}
+                        item={item}
+                        currency={design.currency}
+                        highlighted={item.position === highlightedPosition}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={ShoppingBag}
+                    heading="No products matched yet"
+                    body="Your design plan is ready above. Product matches for this style are still being prepared — check back soon."
+                    className="p-5"
+                  />
+                )}
+              </div>
             </div>
           </div>
 
@@ -602,26 +631,28 @@ export function ResultPage() {
               Start shopping from the list, save your plan, or design another room with a different budget.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-              <Button
+              <LoadingButton
                 size="lg"
                 variant="outline"
                 className="h-11 rounded-md px-6 text-[14px] font-semibold shadow-none"
                 onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending}
+                loading={saveMutation.isPending}
+                loadingText="Saving..."
               >
                 <Bookmark className="size-4" aria-hidden="true" />
                 {design.savedAt ? 'Saved' : 'Save result'}
-              </Button>
-              <Button
+              </LoadingButton>
+              <LoadingButton
                 size="lg"
                 variant="outline"
                 className="h-11 rounded-md px-6 text-[14px] font-semibold shadow-none"
                 onClick={handleShareClick}
-                disabled={shareMutation.isPending}
+                loading={shareMutation.isPending}
+                loadingText="Sharing..."
               >
                 <Share2 className="size-4" aria-hidden="true" />
                 Share
-              </Button>
+              </LoadingButton>
               <Button
                 size="lg"
                 className="h-11 rounded-md px-6 text-[14px] font-bold shadow-none"
@@ -646,24 +677,26 @@ export function ResultPage() {
       {/* Mobile bottom action bar */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border-subtle bg-bg-elevated/95 px-4 py-3 shadow-[0_-10px_30px_rgba(26,22,20,0.08)] backdrop-blur md:hidden">
         <div className="mx-auto grid max-w-[520px] grid-cols-3 gap-2">
-          <Button
+          <LoadingButton
             variant="outline"
             className="h-11 rounded-md"
             onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending}
+            loading={saveMutation.isPending}
+            loadingText="Saving..."
           >
             <Bookmark className="size-4" aria-hidden="true" />
             {design.savedAt ? 'Saved' : 'Save'}
-          </Button>
-          <Button
+          </LoadingButton>
+          <LoadingButton
             variant="outline"
             className="h-11 rounded-md"
             onClick={handleShareClick}
-            disabled={shareMutation.isPending}
+            loading={shareMutation.isPending}
+            loadingText="Sharing..."
           >
             <Share2 className="size-4" aria-hidden="true" />
             Share
-          </Button>
+          </LoadingButton>
           <Button className="h-11 rounded-md" onClick={handleRefineClick}>
             <MessageCircle className="size-4" aria-hidden="true" />
             Refine

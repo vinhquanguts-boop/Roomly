@@ -1,6 +1,8 @@
 import { loadEnv } from '../lib/env.js';
+import { assertLocalOnlyConfiguration } from '../lib/local-mode.js';
 
 loadEnv();
+assertLocalOnlyConfiguration();
 
 // Dynamic import: provider modules read process.env at import time, so this must run after loadEnv().
 const { getAI } = await import('../services/ai/index.js');

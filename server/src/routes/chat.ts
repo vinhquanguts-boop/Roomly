@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { getAI } from '../services/ai/index.js';
 import { preDesignChatOutputSchema } from '../services/ai/types.js';
 import type { DesignBrief, PreDesignChatOutput } from '../services/ai/types.js';
+import { getRequestOwner, type RequestOwner } from '../lib/request-context.js';
+import { runTrackedAiOperation } from '../lib/ai-usage.js';
+import { logError, safeErrorCode } from '../lib/logging.js';
 
 // --- In-memory session store -------------------------------------------------
 // Sessions are intentionally transient — they exist only to bridge the pre-design
@@ -19,6 +22,7 @@ type ChatSession = {
   id: string;
   messages: SessionMessage[];
   createdAt: Date;
+  owner: RequestOwner;
 };
 
 const sessions = new Map<string, ChatSession>();
@@ -113,21 +117,33 @@ setInterval(
 
 export const chatRouter = new Hono();
 
+function canAccessSession(session: ChatSession, owner: RequestOwner): boolean {
+  if (session.owner.authUserId) {
+    return session.owner.authUserId === owner.authUserId;
+  }
+  return session.owner.sessionId === owner.sessionId;
+}
+
 /** POST /api/chat/session — create a new pre-design chat session */
-chatRouter.post('/session', (c) => {
+chatRouter.post('/session', async (c) => {
+  const owner = await getRequestOwner(c);
   const sessionId = crypto.randomUUID();
   sessions.set(sessionId, {
     id: sessionId,
     messages: [],
     createdAt: new Date(),
+    owner,
   });
   return c.json({ sessionId }, 201);
 });
 
 /** GET /api/chat/session/:id — fetch message history */
-chatRouter.get('/session/:id', (c) => {
+chatRouter.get('/session/:id', async (c) => {
   const session = sessions.get(c.req.param('id'));
   if (!session) {
+    return c.json({ error: 'Session not found.' }, 404);
+  }
+  if (!canAccessSession(session, await getRequestOwner(c))) {
     return c.json({ error: 'Session not found.' }, 404);
   }
   return c.json({ messages: session.messages });
@@ -137,6 +153,9 @@ chatRouter.get('/session/:id', (c) => {
 chatRouter.post('/session/:id/message', async (c) => {
   const session = sessions.get(c.req.param('id'));
   if (!session) {
+    return c.json({ error: 'Session not found.' }, 404);
+  }
+  if (!canAccessSession(session, await getRequestOwner(c))) {
     return c.json({ error: 'Session not found.' }, 404);
   }
 
@@ -170,11 +189,16 @@ chatRouter.post('/session/:id/message', async (c) => {
   // Run AI
   let result: PreDesignChatOutput;
   try {
-    const ai = getAI();
-    const raw = await ai.preDesignChat({ history, userMessage: userContent });
+    const raw = await runTrackedAiOperation(
+      { owner: session.owner, operation: 'pre_design_chat' },
+      () => getAI().preDesignChat({ history, userMessage: userContent })
+    );
     result = preDesignChatOutputSchema.parse(raw);
   } catch (err) {
-    console.error('[chat] preDesignChat error:', err);
+    logError('pre_design_chat_failed', {
+      error_name: err instanceof Error ? err.name : 'UnknownError',
+      error_code: safeErrorCode(err),
+    });
     session.messages.pop();
     return c.json(
       { error: 'Roomly could not reach the local AI. Check that Ollama is running, then try again.' },

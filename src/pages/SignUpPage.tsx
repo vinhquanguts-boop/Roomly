@@ -121,11 +121,12 @@ export function SignUpPage() {
                 type="password"
                 autoComplete="new-password"
                 minLength={8}
+                aria-describedby="password-hint"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 required
               />
-              <p className="text-xs font-semibold text-text-secondary">Use at least 8 characters.</p>
+              <p id="password-hint" className="text-xs font-semibold text-text-secondary">Use at least 8 characters.</p>
             </div>
             <LoadingButton
               type="submit"

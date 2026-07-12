@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { ArrowLeft, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Sparkles } from 'lucide-react';
 import { z } from 'zod';
 import gsap from 'gsap';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { LightCard } from '@/components/LightCard';
+import { LoadingButton } from '@/components/LoadingButton';
 import { StepProgress } from '@/components/StepProgress';
 import { useCardTilt } from '@/hooks/useCardTilt';
 import { usePageEntrance } from '@/hooks/usePageEntrance';
@@ -193,6 +195,7 @@ export function QuizPage() {
   const mainRef = useRef<HTMLElement>(null);
   const questionContentRef = useRef<HTMLDivElement>(null);
   const finalNotesRef = useRef<HTMLDivElement>(null);
+  const shimmerRef = useRef<HTMLDivElement>(null);
   const prevIndexRef = useRef<number>(-1);
   const latestAnswerRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
@@ -222,10 +225,15 @@ export function QuizPage() {
   const isLastQuestion = currentIndex === QUIZ_QUESTIONS.length - 1;
   const isComplete = answeredCount === QUIZ_QUESTIONS.length;
 
-  // Animate finalNotes section in after last question is answered
+  // Animate finalNotes section in after last question is answered, then sweep a shimmer across it
   useEffect(() => {
     if (!finalNotesRef.current || !isComplete || reduced) return;
-    gsap.fromTo(finalNotesRef.current, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out', clearProps: 'all' });
+    const tl = gsap.timeline();
+    tl.fromTo(finalNotesRef.current, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.4, ease: 'power3.out', clearProps: 'opacity,transform' });
+    if (shimmerRef.current) {
+      tl.fromTo(shimmerRef.current, { xPercent: -100 }, { xPercent: 100, duration: 0.7, ease: 'power1.inOut' }, '>-0.1');
+    }
+    return () => { tl.kill(); };
   }, [isComplete, reduced]);
 
   // Slide in the most recently accumulated answer in the sidebar
@@ -272,7 +280,9 @@ export function QuizPage() {
       });
       navigate(`/design/generating/${designId}`);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'Could not start design generation.');
+      const message = submitError instanceof Error ? submitError.message : 'Could not start design generation.';
+      setError(message);
+      toast.error(message);
       setIsSubmitting(false);
     }
   }
@@ -394,7 +404,13 @@ export function QuizPage() {
 
             {/* Final notes textarea — appears after last question is answered */}
             {isLastQuestion && isComplete && (
-              <div ref={finalNotesRef} className="mt-5 border-t border-border-subtle pt-5" style={{ opacity: 0 }}>
+              <div ref={finalNotesRef} className="relative mt-5 overflow-hidden border-t border-border-subtle pt-5" style={{ opacity: 0 }}>
+                <div
+                  ref={shimmerRef}
+                  className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                  style={{ transform: 'translateX(-100%)' }}
+                  aria-hidden="true"
+                />
                 <label className="text-sm font-bold" htmlFor="finalNotes">
                   Anything else to guide the design?
                   <span className="ml-2 text-xs font-normal text-text-secondary">optional</span>
@@ -431,10 +447,15 @@ export function QuizPage() {
                   Next
                 </Button>
               ) : (
-                <Button type="button" disabled={!isComplete || isSubmitting} onClick={submitQuiz}>
-                  {isSubmitting ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+                <LoadingButton
+                  type="button"
+                  disabled={!isComplete}
+                  loading={isSubmitting}
+                  loadingText="Creating design..."
+                  onClick={submitQuiz}
+                >
                   Generate design
-                </Button>
+                </LoadingButton>
               )}
             </div>
           </LightCard>

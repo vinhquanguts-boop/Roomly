@@ -1,3 +1,4 @@
+# Local static fallback. Use the backend /robots.txt route when a public API host is configured.
 User-agent: *
 Allow: /
 Disallow: /api/

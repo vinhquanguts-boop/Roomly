@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Loader2, Sparkles, XCircle } from 'lucide-react';
 import gsap from 'gsap';
+import { toast } from 'sonner';
 import { LightCard } from '@/components/LightCard';
 import { StepProgress } from '@/components/StepProgress';
 import { Button } from '@/components/ui/button';
@@ -33,6 +34,10 @@ export function GeneratingPage() {
   const mainRef = useRef<HTMLElement>(null);
   const [displayProgress, setDisplayProgress] = useState(0);
   const progressObj = useRef({ val: 0 });
+  const failedToastRef = useRef(false);
+  const completeHandledRef = useRef(false);
+  const iconCircleRef = useRef<HTMLSpanElement>(null);
+  const reduced = useReducedMotion();
 
   usePageEntrance(mainRef);
 
@@ -53,17 +58,44 @@ export function GeneratingPage() {
   const design = designQuery.data?.design;
 
   useEffect(() => {
-    if (design?.status === 'complete') {
-      trackEvent('plan_generated', { currency: design.currency });
-      if (design.renderUrl) trackEvent('render_complete', { currency: design.currency });
-      navigate(`/design/result/${design.id}`);
+    if (design?.status !== 'complete' || completeHandledRef.current) return;
+    completeHandledRef.current = true;
+    trackEvent('plan_generated', { currency: design.currency });
+    if (design.renderUrl) trackEvent('render_complete', { currency: design.currency });
+
+    const goToResult = () => navigate(`/design/result/${design.id}`);
+    const dots = iconCircleRef.current?.querySelectorAll('.confetti-dot');
+    if (reduced || !dots?.length) {
+      goToResult();
+      return;
     }
-  }, [design?.currency, design?.id, design?.renderUrl, design?.status, navigate]);
+    gsap.set(dots, { opacity: 1, scale: 1, x: 0, y: 0 });
+    const tween = gsap.to(dots, {
+      scale: 0,
+      x: (i: number) => Math.cos((i / dots.length) * Math.PI * 2) * 60,
+      y: (i: number) => Math.sin((i / dots.length) * Math.PI * 2) * 60,
+      opacity: 0,
+      duration: 0.4,
+      stagger: 0.03,
+      ease: 'power2.out',
+      onComplete: goToResult,
+    });
+    // Kill on unmount so onComplete cannot navigate after the user has left the page
+    return () => {
+      tween.kill();
+    };
+  }, [design, navigate, reduced]);
+
+  useEffect(() => {
+    if (design?.status === 'failed' && !failedToastRef.current) {
+      failedToastRef.current = true;
+      toast.error('Design generation failed — check the setup and try again.');
+    }
+  }, [design?.status]);
 
   const status = design?.status ?? 'pending';
   const progress = STATUS_PROGRESS[status];
   const hasLoadError = designQuery.isError || !id;
-  const reduced = useReducedMotion();
 
   // Animate the progress bar value smoothly whenever the real progress changes
   useEffect(() => {
@@ -98,7 +130,7 @@ export function GeneratingPage() {
       <StepProgress current={4} />
       <main ref={mainRef} className="min-h-dvh bg-bg-base px-5 py-10 text-text-primary md:px-10">
       <LightCard className="mx-auto max-w-[640px] p-6 md:p-8">
-        <span className="relative mx-auto flex size-16 items-center justify-center rounded-full bg-secondary-muted text-accent">
+        <span ref={iconCircleRef} className="relative mx-auto flex size-16 items-center justify-center rounded-full bg-secondary-muted text-accent">
           {status === 'failed' || hasLoadError ? (
             <XCircle className="size-7" aria-hidden="true" />
           ) : (
@@ -107,6 +139,13 @@ export function GeneratingPage() {
               <span className="orbit-dot" aria-hidden="true" />
               <span className="orbit-dot" aria-hidden="true" />
               <span className="orbit-dot" aria-hidden="true" />
+              {Array.from({ length: 8 }).map((_, i) => (
+                <span
+                  key={i}
+                  className="confetti-dot absolute inset-0 m-auto size-2 rounded-full bg-accent opacity-0"
+                  aria-hidden="true"
+                />
+              ))}
             </>
           )}
         </span>
@@ -193,8 +232,11 @@ export function GeneratingPage() {
         </div>
 
         {status === 'failed' || hasLoadError ? (
-          <div className="mt-7 flex justify-center">
+          <div className="mt-7 flex flex-wrap justify-center gap-3">
             <Button asChild>
+              <Link to="/design/upload">Start over</Link>
+            </Button>
+            <Button asChild variant="outline">
               <Link to="/">Return home</Link>
             </Button>
           </div>

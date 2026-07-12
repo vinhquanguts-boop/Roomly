@@ -1,3 +1,7 @@
+import { useEffect, useRef } from 'react';
+import gsap from 'gsap';
+import { useReducedMotion } from '@/hooks/useReducedMotion';
+
 interface StepProgressProps {
   current: 1 | 2 | 3 | 4 | 5;
 }
@@ -10,7 +14,30 @@ const STEPS = [
   { n: 5, label: 'Result' },
 ];
 
+// The component remounts on every route change, so the previous step lives at
+// module scope; it only needs to survive within the SPA session.
+let lastSeenStep = 0;
+
 export function StepProgress({ current }: StepProgressProps) {
+  const stepRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const reduced = useReducedMotion();
+
+  useEffect(() => {
+    const prev = lastSeenStep;
+    lastSeenStep = current;
+    if (reduced || current !== prev + 1) return;
+    const completedIcon = stepRefs.current[prev - 1];
+    if (!completedIcon) return;
+    const tween = gsap.fromTo(
+      completedIcon,
+      { scale: 1 },
+      { scale: 1.3, duration: 0.18, yoyo: true, repeat: 1, ease: 'back.out(2)', clearProps: 'all' }
+    );
+    return () => {
+      tween.kill();
+    };
+  }, [current, reduced]);
+
   return (
     <nav
       aria-label="Design progress"
@@ -25,6 +52,9 @@ export function StepProgress({ current }: StepProgressProps) {
             <div key={step.n} className="flex flex-1 items-center last:flex-none">
               <div className="flex shrink-0 items-center gap-2">
                 <span
+                  ref={(node) => {
+                    stepRefs.current[index] = node;
+                  }}
                   className={[
                     'flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-bold',
                     isCompleted

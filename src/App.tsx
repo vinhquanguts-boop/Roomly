@@ -3,6 +3,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { CookieBanner } from '@/components/CookieBanner';
+import { OfflineBanner } from '@/components/OfflineBanner';
+import { PageSuspenseFallback } from '@/components/PageSuspenseFallback';
 import { PageTransition } from '@/components/PageTransition';
 import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/lib/auth-context';
@@ -75,13 +77,7 @@ function App() {
         <AuthProvider>
           <RouteAnalytics />
           <AppErrorBoundary>
-          <Suspense
-            fallback={
-              <div className="flex min-h-dvh items-center justify-center bg-bg-base text-sm font-semibold text-text-secondary">
-                Loading Roomly...
-              </div>
-            }
-          >
+          <Suspense fallback={<PageSuspenseFallback />}>
             <PageTransition>
               <Routes>
                 <Route path="/" element={<LandingPage />} />
@@ -106,8 +102,9 @@ function App() {
           </Suspense>
           </AppErrorBoundary>
         </AuthProvider>
-        <Toaster position="top-center" />
+        <Toaster position="top-center" richColors closeButton />
         <CookieBanner />
+        <OfflineBanner />
       </BrowserRouter>
     </QueryClientProvider>
   );

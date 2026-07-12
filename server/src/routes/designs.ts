@@ -39,6 +39,7 @@ import {
   type Plan,
 } from '../lib/entitlements.js';
 import { takeRateLimit } from '../lib/rate-limit.js';
+import { runTrackedAiOperation } from '../lib/ai-usage.js';
 
 const setupSchema = z.object({
   budget: z.coerce.number().min(50).max(5000),
@@ -164,19 +165,28 @@ function getPlanCostMax(plan: DesignPlan): number {
   return plan.totalEstimatedCost.max;
 }
 
-async function generatePlanUnderBudget(input: DesignPlanInput): Promise<DesignPlan> {
-  const ai = getAI();
-  const firstPlan = await ai.generateDesignPlan(input);
-  if (getPlanCostMax(firstPlan) <= input.budget) {
+async function generatePlanUnderBudget(params: {
+  input: DesignPlanInput;
+  owner: RequestOwner;
+  designId: string;
+}): Promise<DesignPlan> {
+  const firstPlan = await runTrackedAiOperation(
+    { owner: params.owner, operation: 'design_plan', designId: params.designId },
+    () => getAI().generateDesignPlan(params.input)
+  );
+  if (getPlanCostMax(firstPlan) <= params.input.budget) {
     return firstPlan;
   }
 
-  const retryPlan = await ai.generateDesignPlan({
-    ...input,
-    styleDirection: `${input.styleDirection}. Keep total maximum estimated cost at or under ${input.budget} ${input.currency}; remove nice-to-have items before exceeding budget.`,
-  });
+  const retryPlan = await runTrackedAiOperation(
+    { owner: params.owner, operation: 'design_plan', designId: params.designId },
+    () => getAI().generateDesignPlan({
+      ...params.input,
+      styleDirection: `${params.input.styleDirection}. Keep total maximum estimated cost at or under ${params.input.budget} ${params.input.currency}; remove nice-to-have items before exceeding budget.`,
+    })
+  );
 
-  if (getPlanCostMax(retryPlan) > input.budget) {
+  if (getPlanCostMax(retryPlan) > params.input.budget) {
     throw new Error('Generated design plan exceeded the budget after retry.');
   }
 
@@ -235,9 +245,14 @@ async function runDesignPipeline(params: {
   roomType: CreateDesignInput['setup']['roomTypeOverride'];
   input: DesignPlanInput;
   plan: Plan;
+  owner: RequestOwner;
 }): Promise<void> {
   try {
-    const generatedPlan = designPlanSchema.parse(await generatePlanUnderBudget(params.input));
+    const generatedPlan = designPlanSchema.parse(await generatePlanUnderBudget({
+      input: params.input,
+      owner: params.owner,
+      designId: params.designId,
+    }));
     const matches = await persistShoppingList({
       designId: params.designId,
       plan: generatedPlan,
@@ -273,11 +288,14 @@ async function runDesignPipeline(params: {
       return;
     }
 
-    const render = await getAI().renderImage({
-      originalImageUrl: params.roomImageUrl,
-      prompt: composeRenderPrompt(plan, params.roomType),
-      negativePrompt: DEFAULT_NEGATIVE_PROMPT,
-    });
+    const render = await runTrackedAiOperation(
+      { owner: params.owner, operation: 'render', designId: params.designId },
+      () => getAI().renderImage({
+        originalImageUrl: params.roomImageUrl,
+        prompt: composeRenderPrompt(plan, params.roomType),
+        negativePrompt: DEFAULT_NEGATIVE_PROMPT,
+      })
+    );
 
     await getDb()
       .update(designs)
@@ -317,8 +335,8 @@ function serializeChatMessage(message: typeof chatMessages.$inferSelect) {
   };
 }
 
-function checkChatLimit(designId: string): boolean {
-  return takeRateLimit(`chat:${designId}`, 3, 60_000).allowed;
+async function checkChatLimit(designId: string): Promise<boolean> {
+  return (await takeRateLimit(`chat:${designId}`, 3, 60_000)).allowed;
 }
 
 function buildDesignContext(params: {
@@ -474,17 +492,22 @@ async function applyRegenerateAll(params: {
   room: typeof rooms.$inferSelect;
   plan: DesignPlan;
   toolCall: Extract<ChatToolCall, { action: 'regenerate_all' }>;
+  owner: RequestOwner;
 }): Promise<string> {
   const roomAnalysis = roomAnalysisSchema.parse(params.room.vlmAnalysis);
   const budget = params.toolCall.newBudget ?? Number(params.design.budget);
   const styleDirection = params.toolCall.newStyleDirection ?? params.design.styleDirection ?? params.plan.styleDirection;
   const generatedPlan = designPlanSchema.parse(await generatePlanUnderBudget({
-    roomAnalysis,
-    budget,
-    currency: params.design.currency,
-    styleDirection,
-    deliveryUrgency: 'normal',
-    existingItemsToKeep: roomAnalysis.detectedItems.filter((item) => item.keepRecommended).map((item) => item.name),
+    owner: params.owner,
+    designId: params.design.id,
+    input: {
+      roomAnalysis,
+      budget,
+      currency: params.design.currency,
+      styleDirection,
+      deliveryUrgency: 'normal',
+      existingItemsToKeep: roomAnalysis.detectedItems.filter((item) => item.keepRecommended).map((item) => item.name),
+    },
   }));
 
   const matches = await persistShoppingList({
@@ -530,7 +553,7 @@ designsRouter.post('/', zValidator('json', createDesignSchema), async (c) => {
   const payload = c.req.valid('json');
   const owner = await getRequestOwner(c);
   if (!isAuthenticatedOwner(owner)) {
-    const limit = takeRateLimit(`anonymous-design:${owner.sessionId}`, 5, 24 * 60 * 60 * 1000);
+  const limit = await takeRateLimit(`anonymous-design:${owner.sessionId}`, 5, 24 * 60 * 60 * 1000);
     if (!limit.allowed) {
       c.header('Retry-After', String(limit.retryAfterSeconds));
       return c.json({ code: 'ANONYMOUS_DAILY_LIMIT_REACHED', error: 'You have reached today\'s anonymous design limit. Sign in or try again tomorrow.' }, 429);
@@ -594,6 +617,7 @@ designsRouter.post('/', zValidator('json', createDesignSchema), async (c) => {
       existingItemsToKeep,
     },
     plan: getEffectivePlan(owner),
+    owner,
   });
 
   return c.json({ designId: design.id });
@@ -747,7 +771,7 @@ designsRouter.post('/:id/chat', zValidator('json', chatMessageSchema), async (c)
     return c.json({ error: 'Design must be ready before chat refinement.' }, 400);
   }
 
-  if (!checkChatLimit(designId)) {
+  if (!(await checkChatLimit(designId))) {
     return c.json({ error: 'Too many refinements. Please wait a minute and try again.' }, 429);
   }
 
@@ -778,14 +802,17 @@ designsRouter.post('/:id/chat', zValidator('json', chatMessageSchema), async (c)
     content: payload.message,
   });
 
-  let toolCall = await getAI().chatRefine({
-    designContext,
-    history: existingMessages.map((message) => ({
-      role: message.role,
-      content: message.content,
-    })),
-    userMessage: payload.message,
-  });
+  let toolCall = await runTrackedAiOperation(
+    { owner, operation: 'design_refinement', designId },
+    () => getAI().chatRefine({
+      designContext,
+      history: existingMessages.map((message) => ({
+        role: message.role,
+        content: message.content,
+      })),
+      userMessage: payload.message,
+    })
+  );
   const forcedStyleDirection = inferStyleRegenerationRequest(payload.message);
   if (forcedStyleDirection) {
     toolCall = {
@@ -816,6 +843,7 @@ designsRouter.post('/:id/chat', zValidator('json', chatMessageSchema), async (c)
       room,
       plan: parsedPlan.data,
       toolCall,
+      owner,
     });
   }
 

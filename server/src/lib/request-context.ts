@@ -3,6 +3,7 @@ import { getCookie, setCookie } from 'hono/cookie';
 import { auth } from './auth.js';
 
 const ROOMLY_SESSION_COOKIE = 'roomly_session_id';
+const ROOMLY_SESSION_CONTEXT_KEY = 'roomly_session_id';
 
 export type RequestOwner = {
   sessionId: string;
@@ -11,8 +12,14 @@ export type RequestOwner = {
 };
 
 export function getOrCreateRoomlySessionId(c: Context): string {
+  const cached = c.get(ROOMLY_SESSION_CONTEXT_KEY) as string | undefined;
+  if (cached) {
+    return cached;
+  }
+
   const existing = getCookie(c, ROOMLY_SESSION_COOKIE);
   if (existing) {
+    c.set(ROOMLY_SESSION_CONTEXT_KEY, existing);
     return existing;
   }
 
@@ -24,6 +31,7 @@ export function getOrCreateRoomlySessionId(c: Context): string {
     path: '/',
     maxAge: 60 * 60 * 24 * 365,
   });
+  c.set(ROOMLY_SESSION_CONTEXT_KEY, sessionId);
   return sessionId;
 }
 

@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { ArrowRight, Compass, ImageIcon, Tag } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 import { LightCard } from '@/components/LightCard';
 import { Navigation } from '@/components/Navigation';
+import { RetryBlock } from '@/components/RetryBlock';
+import { SkeletonDesignCard } from '@/components/SkeletonDesignCard';
 import { Button } from '@/components/ui/button';
 import { getExploreDesigns } from '@/lib/api';
 
@@ -51,15 +54,27 @@ export function ExplorePage() {
             </Button>
           </div>
 
+          <div aria-live="polite" aria-busy={exploreQuery.isPending}>
           {exploreQuery.isPending ? (
-            <LightCard className="mt-8 p-6 text-sm font-semibold text-text-secondary">Loading public designs...</LightCard>
+            <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3" aria-label="Loading public designs">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <SkeletonDesignCard key={i} />
+              ))}
+            </div>
+          ) : exploreQuery.isError ? (
+            <RetryBlock
+              message="Could not load public designs."
+              onRetry={() => exploreQuery.refetch()}
+              className="mt-8"
+            />
           ) : designs.length === 0 ? (
-            <LightCard className="mt-8 p-8 text-center">
-              <h2 className="font-display text-[32px] font-semibold">Nothing published yet</h2>
-              <p className="mx-auto mt-3 max-w-[460px] text-sm leading-6 text-text-secondary">
-                Shared designs will appear here after they are published from the result page.
-              </p>
-            </LightCard>
+            <EmptyState
+              icon={Compass}
+              heading="Nothing to explore yet"
+              body="Shared designs will appear here after they are published from the result page. Be the first to share one."
+              cta={{ label: 'Create a design', to: '/design/upload' }}
+              className="mt-8"
+            />
           ) : (
             <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {designs.map((design) => (
@@ -104,6 +119,7 @@ export function ExplorePage() {
               ))}
             </div>
           )}
+          </div>
         </div>
       </main>
     </>
