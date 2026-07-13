@@ -8,6 +8,7 @@ import {
   CloudUpload,
   Lock,
   MessageSquare,
+  MonitorCog,
   ShieldCheck,
   ShoppingCart,
   Tag,
@@ -41,6 +42,7 @@ import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import { useTextReveal } from '@/hooks/useTextReveal';
 import { PLAN_FEATURES, type Plan } from '@/lib/api/subscription';
+import { isStaticDeployment } from '@/lib/deployment';
 import { cn } from '@/lib/utils';
 
 const stats = [
@@ -174,6 +176,7 @@ export function LandingPage() {
   const heroImageRef = useRef<HTMLDivElement>(null);
   const heroBgRef = useRef<HTMLElement>(null);
   const reduced = useReducedMotion();
+  const primaryCtaLabel = isStaticDeployment ? 'Use Roomly locally' : 'Start your room design';
 
   // Text reveal on H1
   const h1Ref = useTextReveal(0.1) as React.RefObject<HTMLHeadingElement>;
@@ -252,18 +255,22 @@ export function LandingPage() {
                 <div ref={ctaWrapperRef} className="inline-block">
                   <Button asChild size="lg" className="h-12 rounded-md px-8 text-[15px] font-bold shadow-none">
                     <Link to="/design/upload">
-                      Start your room design
+                      {primaryCtaLabel}
                       <ArrowRight className="size-4" aria-hidden="true" />
                     </Link>
                   </Button>
                 </div>
-                <Link
-                  to="/chat"
-                  className="flex items-center gap-2 text-sm font-semibold text-text-secondary transition-colors hover:text-accent"
-                >
-                  <MessageSquare className="size-4" />
-                  Not sure? Chat with us first
-                </Link>
+                {isStaticDeployment ? (
+                  <Link to="/design/upload" className="flex items-center gap-2 text-sm font-semibold text-text-secondary transition-colors hover:text-accent">
+                    <MonitorCog className="size-4" />
+                    View local workspace setup
+                  </Link>
+                ) : (
+                  <Link to="/chat" className="flex items-center gap-2 text-sm font-semibold text-text-secondary transition-colors hover:text-accent">
+                    <MessageSquare className="size-4" />
+                    Not sure? Chat with us first
+                  </Link>
+                )}
               </div>
               <div className="mt-7 grid max-w-[360px] grid-cols-3 gap-4 text-[11px] leading-tight text-text-primary">
                 <div className="flex items-center gap-2">

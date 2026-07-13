@@ -5,7 +5,9 @@ import { defineConfig } from "vite"
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => ({
-  base: './',
+  // Cloudflare serves this build from the Worker root and rewrites SPA routes.
+  // Root-relative chunks keep direct visits such as /pricing from requesting /pricing/assets/....
+  base: '/',
   plugins: [
     react(),
     ...(mode === 'analyze'

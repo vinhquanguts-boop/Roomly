@@ -10,6 +10,9 @@ import { Toaster } from '@/components/ui/sonner';
 import { AuthProvider } from '@/lib/auth-context';
 import { LandingPage } from '@/pages/LandingPage';
 import { trackEvent } from '@/lib/analytics';
+import { isStaticDeployment } from '@/lib/deployment';
+import { LocalWorkspacePage } from '@/pages/LocalWorkspacePage';
+import { StaticPricingPage } from '@/pages/StaticPricingPage';
 
 const LandingPlaceholder = lazy(() =>
   import('@/pages/LandingPlaceholder').then((module) => ({ default: module.LandingPlaceholder }))
@@ -65,43 +68,59 @@ const queryClient = new QueryClient();
 function RouteAnalytics() {
   const location = useLocation();
   useEffect(() => {
-    if (location.pathname === '/') trackEvent('landing_view');
+    if (!isStaticDeployment && location.pathname === '/') trackEvent('landing_view');
   }, [location.pathname]);
   return null;
+}
+
+function StaticRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/pricing" element={<StaticPricingPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="*" element={<LocalWorkspacePage />} />
+    </Routes>
+  );
+}
+
+function LocalRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/design" element={<LandingPlaceholder />} />
+      <Route path="/design/upload" element={<UploadPage />} />
+      <Route path="/design/setup" element={<SetupPage />} />
+      <Route path="/design/quiz" element={<QuizPage />} />
+      <Route path="/design/generating/:id" element={<GeneratingPage />} />
+      <Route path="/design/result/:id" element={<ResultPage />} />
+      <Route path="/auth/sign-in" element={<SignInPage />} />
+      <Route path="/auth/sign-up" element={<SignUpPage />} />
+      <Route path="/dashboard" element={<DashboardPage />} />
+      <Route path="/explore" element={<ExplorePage />} />
+      <Route path="/explore/:slug" element={<PublicDesignPage />} />
+      <Route path="/pricing" element={<PricingPage />} />
+      <Route path="/account" element={<AccountPage />} />
+      <Route path="/chat" element={<PreDesignChatPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+    </Routes>
+  );
 }
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AuthProvider>
-          <RouteAnalytics />
+        <RouteAnalytics />
           <AppErrorBoundary>
           <Suspense fallback={<PageSuspenseFallback />}>
             <PageTransition>
-              <Routes>
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/design" element={<LandingPlaceholder />} />
-                <Route path="/design/upload" element={<UploadPage />} />
-                <Route path="/design/setup" element={<SetupPage />} />
-                <Route path="/design/quiz" element={<QuizPage />} />
-                <Route path="/design/generating/:id" element={<GeneratingPage />} />
-                <Route path="/design/result/:id" element={<ResultPage />} />
-                <Route path="/auth/sign-in" element={<SignInPage />} />
-                <Route path="/auth/sign-up" element={<SignUpPage />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/explore" element={<ExplorePage />} />
-                <Route path="/explore/:slug" element={<PublicDesignPage />} />
-                <Route path="/pricing" element={<PricingPage />} />
-                <Route path="/account" element={<AccountPage />} />
-                <Route path="/chat" element={<PreDesignChatPage />} />
-                <Route path="/privacy" element={<PrivacyPage />} />
-                <Route path="/terms" element={<TermsPage />} />
-              </Routes>
+              {isStaticDeployment ? <StaticRoutes /> : <AuthProvider><LocalRoutes /></AuthProvider>}
             </PageTransition>
           </Suspense>
           </AppErrorBoundary>
-        </AuthProvider>
         <Toaster position="top-center" richColors closeButton />
         <CookieBanner />
         <OfflineBanner />

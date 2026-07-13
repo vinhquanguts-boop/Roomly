@@ -1,6 +1,10 @@
 const CONSENT_KEY = 'roomly.analytics-consent.v1';
 const VISITOR_KEY = 'roomly.analytics-visitor.v1';
 
+function isStaticDeployment(): boolean {
+  return import.meta.env.VITE_DEPLOYMENT_MODE === 'static';
+}
+
 export type AnalyticsEvent =
   | 'landing_view'
   | 'upload_start'
@@ -30,6 +34,7 @@ function visitorId(): string {
 }
 
 export function trackEvent(event: AnalyticsEvent, properties: Record<string, string | number | boolean | null> = {}): void {
+  if (isStaticDeployment()) return;
   const apiKey = import.meta.env.VITE_POSTHOG_API_KEY;
   if (!apiKey || !hasAnalyticsConsent()) return;
 

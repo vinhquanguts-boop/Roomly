@@ -17,6 +17,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { usePlan } from '@/hooks/usePlan';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { useAuth } from '@/lib/auth-state';
+import { isStaticDeployment } from '@/lib/deployment';
 
 const navLinks: Array<
   | { label: string; to: string; href?: never }
@@ -28,7 +29,54 @@ const navLinks: Array<
   { label: 'How it works', href: '/#how-it-works' },
 ];
 
-export function Navigation() {
+const staticNavLinks = [
+  { label: 'Pricing', to: '/pricing' },
+  { label: 'How it works', href: '/#how-it-works' },
+];
+
+function StaticNavigation() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  return (
+    <header className="sticky top-0 z-50 border-b border-border-subtle bg-bg-elevated/92 shadow-[0_4px_24px_rgba(26,22,20,0.06)] backdrop-blur-xl">
+      <div className="mx-auto flex h-[58px] w-full max-w-[1220px] items-center justify-between gap-3 px-4 sm:px-6 xl:px-10">
+        <Link to="/" className="flex min-w-0 transition-opacity hover:opacity-80" aria-label="Roomly home">
+          <Logo variant="full" size="md" color="accent" />
+        </Link>
+        <nav className="hidden items-center gap-8 xl:flex" aria-label="Primary">
+          {staticNavLinks.map((link) => link.to ? (
+            <Link key={link.label} to={link.to} className="text-[15px] font-semibold text-text-primary transition-colors hover:text-accent">{link.label}</Link>
+          ) : (
+            <a key={link.label} href={link.href} className="text-[15px] font-semibold text-text-primary transition-colors hover:text-accent">{link.label}</a>
+          ))}
+        </nav>
+        <div className="flex items-center gap-2">
+          <Button asChild className="h-10 rounded-md px-3 text-[14px] font-semibold shadow-none sm:px-5 sm:text-[15px]">
+            <Link to="/design/upload">Use locally</Link>
+          </Button>
+          <Button variant="ghost" size="icon" className="xl:hidden" aria-label="Open menu" onClick={() => setMobileMenuOpen(true)}>
+            <Menu className="size-5" aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent className="border-border-subtle bg-bg-base text-text-primary">
+          <SheetTitle className="px-5 pt-5 text-left font-display text-lg font-semibold">Menu</SheetTitle>
+          <div className="flex flex-col gap-1 px-5 pb-5">
+            {staticNavLinks.map((link) => link.to ? (
+              <Link key={link.label} to={link.to} className="rounded-md px-3 py-2.5 text-base font-semibold text-text-primary hover:bg-secondary-muted" onClick={() => setMobileMenuOpen(false)}>{link.label}</Link>
+            ) : (
+              <a key={link.label} href={link.href} className="rounded-md px-3 py-2.5 text-base font-semibold text-text-primary hover:bg-secondary-muted" onClick={() => setMobileMenuOpen(false)}>{link.label}</a>
+            ))}
+            <Link to="/design/upload" className="mt-3 rounded-md bg-accent px-3 py-2.5 text-base font-semibold text-accent-foreground" onClick={() => setMobileMenuOpen(false)}>Use Roomly locally</Link>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </header>
+  );
+}
+
+function WorkspaceNavigation() {
   const { isAuthenticated, isPending, signOut } = useAuth();
   const { plan } = usePlan();
   const location = useLocation();
@@ -258,4 +306,8 @@ export function Navigation() {
       </Sheet>
     </header>
   );
+}
+
+export function Navigation() {
+  return isStaticDeployment ? <StaticNavigation /> : <WorkspaceNavigation />;
 }

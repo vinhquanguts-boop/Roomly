@@ -84,6 +84,10 @@ npm run ai:test
 
 The API writes structured local logs with request IDs, rate-limit events, and Ollama operation timings. Prompts, uploaded room images, passwords, API keys, and raw chat messages are intentionally excluded from those logs. AI usage rows record a zero estimated cost because local Ollama does not have a per-request monetary charge.
 
+## Public Static Site
+
+The Cloudflare `workers.dev` deployment only serves Roomly's public landing, pricing, and legal pages. It does not connect to this local API or expose the local workspace. See [Cloudflare Static Deployment](./cloudflare-static-deploy.md) for the Git deployment settings and verification commands.
+
 ## Troubleshooting
 
 - **Ollama unavailable:** start the Ollama app or service, then use `ollama list`. Room analysis and chat will return a clear local-AI error until it is reachable.

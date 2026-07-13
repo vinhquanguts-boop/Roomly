@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Local static fallback. The backend sitemap route is dynamic when publicly hosted. -->
+<!-- Static public-site sitemap. The authenticated workspace is local-only. -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>/</loc></url>
-  <url><loc>/explore</loc></url>
-  <url><loc>/pricing</loc></url>
-  <url><loc>/privacy</loc></url>
-  <url><loc>/terms</loc></url>
+  <url><loc>https://roomly.vinhquang-uts.workers.dev/</loc></url>
+  <url><loc>https://roomly.vinhquang-uts.workers.dev/pricing</loc></url>
+  <url><loc>https://roomly.vinhquang-uts.workers.dev/privacy</loc></url>
+  <url><loc>https://roomly.vinhquang-uts.workers.dev/terms</loc></url>
 </urlset>

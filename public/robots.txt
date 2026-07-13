@@ -1,4 +1,4 @@
-# Local static fallback. Use the backend /robots.txt route when a public API host is configured.
+# Static public-site rules. The authenticated workspace is intentionally local-only.
 User-agent: *
 Allow: /
 Disallow: /api/
@@ -6,4 +6,6 @@ Disallow: /auth/
 Disallow: /account
 Disallow: /dashboard
 Disallow: /design/
+Disallow: /chat
+Disallow: /explore
 Sitemap: /sitemap.xml

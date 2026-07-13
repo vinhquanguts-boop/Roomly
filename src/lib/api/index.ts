@@ -1,4 +1,8 @@
-export const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8787';
+import { isStaticDeployment } from '@/lib/deployment';
+
+const localApiOrigin = `${window.location.protocol}//${window.location.hostname}:8787`;
+
+export const API_BASE_URL = isStaticDeployment ? '' : (import.meta.env.VITE_API_URL ?? localApiOrigin);
 
 export * from './subscription';
 
